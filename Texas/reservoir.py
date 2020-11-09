@@ -89,9 +89,11 @@ class Env:
         self.__j_w = ma.get_j_matrix_w(self.__two_d_well_index_rw_scale, nx=self.__nx, ny=self.__ny,
                                        const=self.__const, k_matrix=k_matrix_w,
                                        depth=self.__depth_m, dx=self.__dx)
+        self.__j_w *= self.__s_w_vec
         self.__j_o = ma.get_j_matrix_o(self.__two_d_well_index_rw_scale, nx=self.__nx, ny=self.__ny,
                                        const=self.__const, k_matrix=k_matrix_o,
                                        depth=self.__depth_m, dx=self.__dx)
+        self.__j_o *= self.__s_o_vec
         # TODO what if we can speed up this inverse
         self.__inv_p_upd = np.eye(self.__nx * self.__ny, dtype=float)
         self.__inv_p_upd += self.__const.dt() * self.__bpw_inv.dot(
@@ -127,8 +129,8 @@ class Env:
         self.upd_params()
         self.__q_w, self.__q_o = ma.get_q_well(self.__wells_const_q, s_w=self.__s_w_vec, s_o=self.__s_o_vec,
                                                nx=self.__nx, ny=self.__ny)
-        self.__q_o = ma.get_q_well_total(self.__wells_const_q, nx=self.__nx, ny=self.__ny) * self.__s_o_vec
-        self.__q_w = ma.get_q_well_total(self.__wells_const_q, nx=self.__nx, ny=self.__ny) * self.__s_w_vec
+        self.__q_o = ma.get_q_well_total(self.__wells_const_q, nx=self.__nx, ny=self.__ny)
+        self.__q_w = ma.get_q_well_total(self.__wells_const_q, nx=self.__nx, ny=self.__ny)
         # boundary conditions
         q_tilde_p = ma.get_q_bound(self.__t_k_tilde, self.__const.p_b())
         q_tilde_w = ma.get_q_bound(self.__t_k_s_w, self.__const.p_b())
