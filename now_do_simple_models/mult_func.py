@@ -156,3 +156,10 @@ def get_lapl_one_ph_muth(p, s, mu, k, d, dx, dy, ph, n_th=8):
 
 def worker(x):
     return x*x
+
+
+def test_glob_mp(x, pos):
+    x[pos] = 1
+
+
+
