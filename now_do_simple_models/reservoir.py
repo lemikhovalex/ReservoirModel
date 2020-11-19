@@ -1,6 +1,7 @@
 import utils as u
 from res_properties import Properties
 import numpy as np
+import scipy
 
 
 class ResState:
@@ -19,54 +20,82 @@ class ResState:
             return self.v[diag, 0]
 
 
-def get_lapl_one_ph(p: ResState, s: ResState, ph: str, prop: Properties, lapl):
-    for dia in range(prop.nx * prop.ny):
-        # ###1#
-        # #4#0#2
-        # ###3#
-        dia_1, dia_2, dia_3, dia_4 = [None] * 4
-        p_0, p_1, p_2, p_3, p_4 = [p.bound_v] * 5
-        s_0, s_1, s_2, s_3, s_4 = [s.bound_v] * 5
-        k_1, k_2, k_3, k_4 = [0] * 4
-        i, j = u.one_d_index_to_two(one_d=dia, ny=prop.ny)
-        if i - 1 >= 0:
-            dia_1 = u.two_dim_index_to_one(i=i - 1, j=j, ny=prop.ny)
-            p_1 = p.v[dia_1, 0]
-            s_1 = s.v[dia_1, 0]
-        if j + 1 < prop.ny:
-            dia_2 = u.two_dim_index_to_one(i=i, j=j + 1, ny=prop.ny)
-            p_2 = p.v[dia_2, 0]
-            s_2 = s.v[dia_2, 0]
-        if i + 1 < prop.nx:
-            dia_3 = u.two_dim_index_to_one(i=i + 1, j=j, ny=prop.ny)
-            p_3 = p.v[dia_3, 0]
-            s_3 = s.v[dia_3, 0]
-        if j - 1 >= 0:
-            dia_4 = u.two_dim_index_to_one(i=i, j=j - 1, ny=prop.ny)
-            p_4 = p.v[dia_4, 0]
-            s_4 = s.v[dia_4, 0]
+def get_lapl_one_ph(p: ResState, s: ResState, ph: str, prop: Properties):
+    s_b_test_x = np.ones((prop.nx, 1)) * s.bound_v
+    p_b_test_x = np.ones((prop.nx, 1)) * p.bound_v
 
-        s_0 = s.v[dia, 0]
-        p_0 = p.v[dia, 0]
-        k_1 = prop.k_rel_ph(s_1=s_1, s_2=s_0, p_1=p_1, p_2=p_0, ph=ph)
-        k_2 = prop.k_rel_ph(s_1=s_0, s_2=s_2, p_1=p_0, p_2=p_2, ph=ph)
-        k_3 = prop.k_rel_ph(s_1=s_0, s_2=s_3, p_1=p_0, p_2=p_3, ph=ph)
-        k_4 = prop.k_rel_ph(s_1=s_4, s_2=s_0, p_1=p_4, p_2=p_0, ph=ph)
-        lapl[dia, dia] = -1 * prop.k * k_1
-        lapl[dia, dia] -= prop.k * k_2
-        lapl[dia, dia] -= prop.k * k_3
-        lapl[dia, dia] -= prop.k * k_4
-        if dia_1 is not None:
-            lapl[dia, dia_1] = prop.k * k_1
-        if dia_2 is not None:
-            lapl[dia, dia_2] = prop.k * k_2
-        if dia_3 is not None:
-            lapl[dia, dia_3] = prop.k * k_3
-        if dia_4 is not None:
-            lapl[dia, dia_4] = prop.k * k_4
+    s_x_ext = np.append(s.v.reshape((prop.nx, prop.ny)), s_b_test_x, axis=1)
+    s_x_ext = s_x_ext.reshape(-1)
+    s_x_ext = np.insert(s_x_ext, 0, s.bound_v)
 
-    lapl *= prop.d * prop.dy / prop.mu[ph] / prop.dx
-    # return lapl
+    p_x_ext = np.append(p.v.reshape((prop.nx, prop.ny)), p_b_test_x, axis=1)
+    p_x_ext = p_x_ext.reshape(-1)
+    p_x_ext = np.insert(p_x_ext, 0, p.bound_v)
+
+    out_x = np.zeros(prop.nx * (prop.ny + 1))
+    for i in range(len(p_x_ext) - 1):
+        if p_x_ext[i] >= p_x_ext[i + 1]:
+            out_x[i] = s_x_ext[i]
+        else:
+            out_x[i] = s_x_ext[i + 1]
+    k_rel_x = np.array([prop.k_rel_ph_1val(s_o, ph) for s_o in out_x])  # consuming)
+    sigma = k_rel_x.max()
+    ##############################################
+    s_b_test_y = np.ones((1, prop.ny)) * s_b_test_x[0]
+    p_b_test_y = np.ones((1, prop.ny)) * p_b_test_x[0]
+
+    s_y_ext = np.append(s.v.reshape((prop.nx, prop.ny)), s_b_test_y, axis=0)
+    s_y_ext = s_y_ext.T.reshape(-1)
+    s_y_ext = np.insert(s_y_ext, 0, s.bound_v)
+
+    p_y_ext = np.append(p.v.reshape((prop.nx, prop.ny)), p_b_test_y, axis=0)
+    p_y_ext = p_y_ext.T.reshape(-1)
+    p_y_ext = np.insert(p_y_ext, 0, p.bound_v)
+
+    out_y = np.zeros((prop.nx + 1) * prop.ny)
+
+    for i in range(len(p_y_ext) - 1):
+        if p_y_ext[i] >= p_y_ext[i + 1]:
+            out_y[i] = s_y_ext[i]
+        elif p_y_ext[i] <= p_y_ext[i + 1]:
+            out_y[i] = s_y_ext[i + 1]
+
+    k_rel_y = np.array([prop.k_rel_ph_1val(s_o, ph) for s_o in out_y])  # consuming
+    sigma = min(sigma, k_rel_y.max())
+    # k_rel_w_y = [f(1 - s_o) for s_o in out_y] # consuming
+
+    # let's go diagonals
+    # main is first
+    # for x we need to drop first and last col
+    main_dia = np.zeros(prop.nx * prop.ny)
+    main_dia += np.delete(k_rel_x.reshape((prop.nx, prop.ny + 1)), obj=-1, axis=1).reshape(-1)
+    main_dia += np.delete(k_rel_x.reshape((prop.nx, prop.ny + 1)), obj=0, axis=1).reshape(-1)
+
+    main_dia += np.delete(k_rel_y.reshape((prop.ny, prop.nx + 1)), obj=-1, axis=1).T.reshape(-1)
+    main_dia += np.delete(k_rel_y.reshape((prop.ny, prop.nx + 1)), obj=0, axis=1).T.reshape(-1)
+
+    close_dia = k_rel_x.reshape((prop.nx, prop.ny + 1))
+    close_dia = np.delete(close_dia, obj=-1, axis=1)
+    close_dia = close_dia.reshape(-1)
+    close_dia *= prop.mask_close
+
+    dist_dia = k_rel_y.reshape((prop.ny, prop.nx + 1))
+    dist_dia = np.delete(dist_dia, obj=-1, axis=1)
+    dist_dia = np.delete(dist_dia, obj=0, axis=1)
+    dist_dia = dist_dia.T.reshape(-1)
+
+    lapl = scipy.sparse.diags(diagonals=[dist_dia, close_dia[1:],
+                                         -1 * main_dia,
+                                         close_dia[1:], dist_dia
+                                         ],
+                              offsets=[-1 * prop.ny, -1, 0, 1, prop.ny]).toarray()
+    lapl *= prop.k * prop.d * prop.dy / prop.mu[ph] / prop.dx
+    sigma *= prop.k * prop.d * prop.dy / prop.mu[ph] / prop.dx
+    '''
+    if np.all(lapl == 0):
+        print('zero lapl')
+    '''
+    return lapl, sigma
 
 
 def get_q_bound(p: ResState, s, ph, prop: Properties, q_b):
