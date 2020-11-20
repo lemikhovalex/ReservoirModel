@@ -7,7 +7,7 @@ class Properties:
                  s_wir=0.2, s_wor=0.8, k_rwr=0.1, k_rot=1., e_w=1., e_o=1., t_w=2., t_o=2.
                  ):
         # res propetis
-        self.nx = 25
+        self.nx = nx
         self.ny = ny
         self.k = k
         self.dx = dx

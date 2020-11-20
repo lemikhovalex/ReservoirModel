@@ -2,6 +2,7 @@ import utils as u
 from res_properties import Properties
 import numpy as np
 import scipy
+import torch
 
 
 class ResState:
@@ -20,7 +21,7 @@ class ResState:
             return self.v[diag, 0]
 
 
-def get_lapl_one_ph(p: ResState, s: ResState, ph: str, prop: Properties):
+def get_lapl_one_ph_np(p: ResState, s, ph, prop: Properties):
     s_b_test_x = np.ones((prop.nx, 1)) * s.bound_v
     p_b_test_x = np.ones((prop.nx, 1)) * p.bound_v
 
@@ -91,11 +92,27 @@ def get_lapl_one_ph(p: ResState, s: ResState, ph: str, prop: Properties):
                               offsets=[-1 * prop.ny, -1, 0, 1, prop.ny]).toarray()
     lapl *= prop.k * prop.d * prop.dy / prop.mu[ph] / prop.dx
     sigma *= prop.k * prop.d * prop.dy / prop.mu[ph] / prop.dx
-    '''
-    if np.all(lapl == 0):
-        print('zero lapl')
-    '''
     return lapl, sigma
+
+
+def get_lapl_one_ph(p: ResState, s: ResState, ph: str, prop: Properties, dtype=None, device=None):
+    if (type(p.v) == np.ndarray) & (type(s.v) == np.ndarray):
+        lapl, sigma = get_lapl_one_ph_np(p=p, s=s, ph=ph, prop=prop)
+        if (dtype is not None) | (dtype is not None):
+            lapl = torch.tensor(lapl, device=device, dtype=dtype)
+        return lapl, sigma
+    elif (type(p.v) == torch.Tensor) & (type(s.v) == torch.Tensor):
+        if (dtype is None) | (dtype is None):
+            'for torch need device and dtype as entrance for get_lapl_one_ph '
+        p.v = p.v.cpu().numpy()
+        s.v = s.v.cpu().numpy()
+        lapl, sigma = get_lapl_one_ph_np(p=p, s=s, ph='o', prop=prop)
+        s.v = torch.tensor(s.v, device=device, dtype=dtype)
+        p.v = torch.tensor(p.v, device=device, dtype=dtype)
+        lapl = torch.tensor(lapl, device=device, dtype=dtype)
+        return lapl, sigma
+    else:
+        'dunno what get_lapl_one_ph got as p and s'
 
 
 def get_q_bound(p: ResState, s, ph, prop: Properties, q_b):
@@ -136,14 +153,89 @@ def get_r_ref(prop: Properties):
     return 1 / (1 / prop.dx + np.pi / prop.d)
 
 
-def get_j_matrix(p, s, pos_r, ph, prop: Properties, j_matr):
+def get_j_matrix(s, p, pos_r, ph, prop: Properties, j_matr):
     r_ref = get_r_ref(prop)
     for pos in pos_r:
         dia_pos = u.two_dim_index_to_one(i=pos[0], j=pos[1], ny=prop.ny)
-        j_matr[dia_pos] = 4 * np.pi * prop.k / prop.b[ph] / prop.mu[ph]
-        j_matr[dia_pos] *= r_ref * pos_r[pos]
-        j_matr[dia_pos] /= (r_ref + pos_r[pos])
-        j_matr[dia_pos] *= prop.k_rel_ph(s_1=s[pos[0], pos[1]], s_2=s[pos[0], pos[1]],
-                                         p_1=p[pos[0], pos[1]], p_2=p[pos[0], pos[1]],
-                                         ph=ph)
+        _p = 4 * np.pi * prop.k / prop.b[ph] / prop.mu[ph]
+        _p *= r_ref * pos_r[pos]
+        _p /= (r_ref + pos_r[pos])
+
+        _p *= prop.k_rel_ph(s_1=s[pos[0], pos[1]], s_2=s[pos[0], pos[1]],
+                            p_1=p[pos[0], pos[1]], p_2=p[pos[0], pos[1]],
+                            ph=ph)
+
+        j_matr[dia_pos] = _p
     # return out.reshape((prop.nx * prop.ny, 1))
+
+
+class Env:
+    def __init__(self, p, s_o: ResState, s_w: ResState, prop: Properties, pos_r: dict, delta_p_well: float):
+        self.p = p
+        self.s_o = s_o
+        self.s_w = s_w
+        self.prop = prop
+        self.pos_r = pos_r
+
+        self.j_o = np.zeros((prop.nx * prop.ny, 1))
+        self.j_w = np.zeros((prop.nx * prop.ny, 1))
+
+        self.q_bound_w = np.zeros((prop.nx * prop.ny, 1))
+        self.q_bound_o = np.zeros((prop.nx * prop.ny, 1))
+
+        #self.delta_p_vec = np.ones((prop.nx * prop.ny, 1)) * delta_p_well
+        #'''
+        self.delta_p_vec = np.zeros((prop.nx * prop.ny, 1))
+        for pos in pos_r:
+            self.delta_p_vec[u.two_dim_index_to_one(pos[0], pos[1], ny=prop.ny), 0] = delta_p_well
+        #'''
+
+        self.nxny_ones = np.ones((prop.nx * prop.ny, 1))
+        self.nxny_eye = np.eye(prop.nx * prop.ny)
+        self.t = 0
+        self.lapl_o = None
+        self.dt_comp_sat = None
+        self.lapl_w = None
+
+    def step(self):
+        self.dt_comp_sat = self.s_o.v * self.prop.c['o'] + self.s_w.v * self.prop.c['w']
+        self.dt_comp_sat *= self.prop.dx * self.prop.dy * self.prop.d
+        self.dt_comp_sat += self.nxny_ones * self.prop.c['r']
+
+        get_j_matrix(p=self.p, s=self.s_o, pos_r=self.pos_r, ph='o', prop=self.prop, j_matr=self.j_o)
+        get_j_matrix(p=self.p, s=self.s_w, pos_r=self.pos_r, ph='w', prop=self.prop, j_matr=self.j_w)
+
+        self.lapl_w, si_w = get_lapl_one_ph(p=self.p, s=self.s_w, ph='w', prop=self.prop)
+        self.lapl_o, si_o = get_lapl_one_ph(p=self.p, s=self.s_o, ph='o', prop=self.prop)
+
+        get_q_bound(self.p, self.s_w, 'w', self.prop, q_b=self.q_bound_w)
+        get_q_bound(self.p, self.s_o, 'o', self.prop, q_b=self.q_bound_o)
+        self.prop.dt = 0.1 * 0.5 * self.prop.phi * self.dt_comp_sat.min() / (si_o + si_w)
+        # matrix for implicit pressure
+        a = self.prop.phi * self.nxny_eye * self.dt_comp_sat - (self.lapl_w + self.lapl_o) * self.prop.dt
+        # right hand state for ax = b
+
+        b = self.prop.phi * self.dt_comp_sat * self.p.v + self.q_bound_w * self.prop.dt + self.q_bound_o * self.prop.dt
+        b += (self.j_o * self.prop.b['o'] + self.j_w * self.prop.b['w']) * self.delta_p_vec * self.prop.dt
+        # upd time stamp
+        self.t += self.prop.dt / (60. * 60 * 24)
+        # solve p
+        p_new = np.linalg.solve(a, b)
+
+        a = self.nxny_ones + (self.prop.c['r'] + self.prop.c['o']) * (p_new - self.p.v)
+        a *= self.prop.dx * self.prop.dy * self.prop.d * self.prop.phi
+
+        b = self.prop.phi * self.prop.dx * self.prop.dy * self.prop.d * self.s_o.v
+        b += self.prop.dt * (self.lapl_o.dot(p_new) + self.q_bound_o + self.j_o * self.prop.b['o'] * self.delta_p_vec)
+        # upd target values
+        self.s_o = ResState((b / a), self.s_o.bound_v, self.prop)
+        self.s_w = ResState(self.nxny_ones - self.s_o.v, self.s_o.bound_v, self.prop)
+        self.p = ResState(p_new, self.prop.p_0, self.prop)
+
+    def get_q(self, ph):
+        out = None
+        if ph == 'o':
+            out = ((-1) * self.j_o * self.delta_p_vec).reshape((self.prop.nx, self.prop.ny))
+        elif ph == 'w':
+            out = ((-1) * self.j_w * self.delta_p_vec).reshape((self.prop.nx, self.prop.ny))
+        return out
