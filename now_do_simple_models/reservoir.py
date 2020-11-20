@@ -229,7 +229,7 @@ class Env:
         b += self.prop.dt * (self.lapl_o.dot(p_new) + self.q_bound_o + self.j_o * self.prop.b['o'] * self.delta_p_vec)
         # upd target values
         self.s_o = ResState((b / a), self.s_o.bound_v, self.prop)
-        self.s_w = ResState(self.nxny_ones - self.s_o.v, self.s_o.bound_v, self.prop)
+        self.s_w = ResState(self.nxny_ones - self.s_o.v, self.s_w.bound_v, self.prop)
         self.p = ResState(p_new, self.prop.p_0, self.prop)
 
     def get_q(self, ph):
