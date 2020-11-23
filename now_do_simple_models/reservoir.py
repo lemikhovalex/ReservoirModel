@@ -2,7 +2,9 @@ import utils as u
 from res_properties import Properties
 import numpy as np
 import scipy
-import torch
+
+
+# import torch
 
 
 class ResState:
@@ -89,12 +91,13 @@ def get_lapl_one_ph_np(p: ResState, s, ph, prop: Properties):
                                          -1 * main_dia,
                                          close_dia[1:], dist_dia
                                          ],
-                              offsets=[-1 * prop.ny, -1, 0, 1, prop.ny]).toarray()
+                              offsets=[-1 * prop.ny, -1, 0, 1, prop.ny])  # .toarray()
     lapl *= prop.k * prop.d * prop.dy / prop.mu[ph] / prop.dx
     sigma *= prop.k * prop.d * prop.dy / prop.mu[ph] / prop.dx
     return lapl, sigma
 
 
+'''
 def get_lapl_one_ph(p: ResState, s: ResState, ph: str, prop: Properties, dtype=None, device=None):
     if (type(p.v) == np.ndarray) & (type(s.v) == np.ndarray):
         lapl, sigma = get_lapl_one_ph_np(p=p, s=s, ph=ph, prop=prop)
@@ -113,6 +116,7 @@ def get_lapl_one_ph(p: ResState, s: ResState, ph: str, prop: Properties, dtype=N
         return lapl, sigma
     else:
         'dunno what get_lapl_one_ph got as p and s'
+'''
 
 
 def get_q_bound(p: ResState, s, ph, prop: Properties, q_b):
@@ -183,12 +187,12 @@ class Env:
         self.q_bound_w = np.zeros((prop.nx * prop.ny, 1))
         self.q_bound_o = np.zeros((prop.nx * prop.ny, 1))
 
-        #self.delta_p_vec = np.ones((prop.nx * prop.ny, 1)) * delta_p_well
-        #'''
+        # self.delta_p_vec = np.ones((prop.nx * prop.ny, 1)) * delta_p_well
+        # '''
         self.delta_p_vec = np.zeros((prop.nx * prop.ny, 1))
         for pos in pos_r:
             self.delta_p_vec[u.two_dim_index_to_one(pos[0], pos[1], ny=prop.ny), 0] = delta_p_well
-        #'''
+        # '''
 
         self.nxny_ones = np.ones((prop.nx * prop.ny, 1))
         self.nxny_eye = np.eye(prop.nx * prop.ny)
@@ -205,22 +209,24 @@ class Env:
         get_j_matrix(p=self.p, s=self.s_o, pos_r=self.pos_r, ph='o', prop=self.prop, j_matr=self.j_o)
         get_j_matrix(p=self.p, s=self.s_w, pos_r=self.pos_r, ph='w', prop=self.prop, j_matr=self.j_w)
 
-        self.lapl_w, si_w = get_lapl_one_ph(p=self.p, s=self.s_w, ph='w', prop=self.prop)
-        self.lapl_o, si_o = get_lapl_one_ph(p=self.p, s=self.s_o, ph='o', prop=self.prop)
+        self.lapl_w, si_w = get_lapl_one_ph_np(p=self.p, s=self.s_w, ph='w', prop=self.prop)
+        self.lapl_o, si_o = get_lapl_one_ph_np(p=self.p, s=self.s_o, ph='o', prop=self.prop)
 
         get_q_bound(self.p, self.s_w, 'w', self.prop, q_b=self.q_bound_w)
         get_q_bound(self.p, self.s_o, 'o', self.prop, q_b=self.q_bound_o)
-        self.prop.dt = 0.1 * 0.5 * self.prop.phi * self.dt_comp_sat.min() / (si_o + si_w)
+        # self.prop.dt = 0.1 * 0.5 * self.prop.phi * self.dt_comp_sat.min() / (si_o + si_w)
         # matrix for implicit pressure
-        a = self.prop.phi * self.nxny_eye * self.dt_comp_sat - (self.lapl_w + self.lapl_o) * self.prop.dt
+        a = self.prop.phi * scipy.sparse.diags(diagonals=[self.dt_comp_sat.reshape(-1)],
+                                               offsets=[0])
+        # a = self.nxny_eye *  self.prop.phi * self.dt_comp_sat
+        a = a - (self.lapl_w + self.lapl_o) * self.prop.dt
         # right hand state for ax = b
-
         b = self.prop.phi * self.dt_comp_sat * self.p.v + self.q_bound_w * self.prop.dt + self.q_bound_o * self.prop.dt
         b += (self.j_o * self.prop.b['o'] + self.j_w * self.prop.b['w']) * self.delta_p_vec * self.prop.dt
+        # solve p
+        p_new = scipy.sparse.linalg.spsolve(a, b).reshape((-1, 1))
         # upd time stamp
         self.t += self.prop.dt / (60. * 60 * 24)
-        # solve p
-        p_new = np.linalg.solve(a, b)
 
         a = self.nxny_ones + (self.prop.c['r'] + self.prop.c['o']) * (p_new - self.p.v)
         a *= self.prop.dx * self.prop.dy * self.prop.d * self.prop.phi
