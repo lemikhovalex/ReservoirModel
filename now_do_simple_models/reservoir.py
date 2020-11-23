@@ -1,8 +1,8 @@
 import utils as u
 from res_properties import Properties
 import numpy as np
-import multiprocessing
-from mult_func import get_segm
+import scipy
+import torch
 
 
 class ResState:
@@ -21,165 +21,221 @@ class ResState:
             return self.v[diag, 0]
 
 
-def get_lapl_one_ph(p: ResState, s: ResState, ph: str, prop: Properties):
-    lapl = np.zeros((prop.nx * prop.ny, prop.nx * prop.ny))
-    for dia in range(prop.nx * prop.ny):
-        ###1#
-        # 4#0#2
-        ###3#
-        dia_1, dia_2, dia_3, dia_4 = [None] * 4
-        p_0, p_1, p_2, p_3, p_4 = [p.bound_v] * 5
-        s_0, s_1, s_2, s_3, s_4 = [s.bound_v] * 5
-        k_1, k_2, k_3, k_4 = [0] * 4
-        i, j = u.one_d_index_to_two(one_d=dia, ny=prop.ny)
-        if i - 1 >= 0:
-            dia_1 = u.two_dim_index_to_one(i=i - 1, j=j, ny=prop.ny)
-            p_1 = p.v[dia_1, 0]
-            s_1 = s.v[dia_1, 0]
-        if j + 1 < prop.ny:
-            dia_2 = u.two_dim_index_to_one(i=i, j=j + 1, ny=prop.ny)
-            p_2 = p.v[dia_2, 0]
-            s_2 = s.v[dia_2, 0]
-        if i + 1 < prop.nx:
-            dia_3 = u.two_dim_index_to_one(i=i + 1, j=j, ny=prop.ny)
-            p_3 = p.v[dia_3, 0]
-            s_3 = s.v[dia_3, 0]
-        if j - 1 >= 0:
-            dia_4 = u.two_dim_index_to_one(i=i, j=j - 1, ny=prop.ny)
-            p_4 = p.v[dia_4, 0]
-            s_4 = s.v[dia_4, 0]
+def get_lapl_one_ph_np(p: ResState, s, ph, prop: Properties):
+    s_b_test_x = np.ones((prop.nx, 1)) * s.bound_v
+    p_b_test_x = np.ones((prop.nx, 1)) * p.bound_v
 
-        s_0 = s.v[dia, 0]
-        p_0 = p.v[dia, 0]
-        k_1 = prop.k_rel_ph(s_1=s_0, s_2=s_1, p_1=p_0, p_2=p_1, ph=ph)
-        k_2 = prop.k_rel_ph(s_1=s_0, s_2=s_2, p_1=p_0, p_2=p_2, ph=ph)
-        k_3 = prop.k_rel_ph(s_1=s_3, s_2=s_0, p_1=p_3, p_2=p_0, ph=ph)
-        k_4 = prop.k_rel_ph(s_1=s_4, s_2=s_0, p_1=p_4, p_2=p_0, ph=ph)
-        lapl[dia, dia] -= prop.k * k_1
-        lapl[dia, dia] -= prop.k * k_2
-        lapl[dia, dia] -= prop.k * k_3
-        lapl[dia, dia] -= prop.k * k_4
-        if not dia_1 is None:
-            lapl[dia, dia_1] += prop.k * k_1
-        if not dia_2 is None:
-            lapl[dia, dia_2] += prop.k * k_2
-        if not dia_3 is None:
-            lapl[dia, dia_3] += prop.k * k_3
-        if not dia_4 is None:
-            lapl[dia, dia_4] += prop.k * k_4
+    s_x_ext = np.append(s.v.reshape((prop.nx, prop.ny)), s_b_test_x, axis=1)
+    s_x_ext = s_x_ext.reshape(-1)
+    s_x_ext = np.insert(s_x_ext, 0, s.bound_v)
 
-    lapl *= prop.d * prop.dy / prop.mu[ph] / prop.dx
-    return lapl
+    p_x_ext = np.append(p.v.reshape((prop.nx, prop.ny)), p_b_test_x, axis=1)
+    p_x_ext = p_x_ext.reshape(-1)
+    p_x_ext = np.insert(p_x_ext, 0, p.bound_v)
+
+    out_x = np.zeros(prop.nx * (prop.ny + 1))
+    for i in range(len(p_x_ext) - 1):
+        if p_x_ext[i] >= p_x_ext[i + 1]:
+            out_x[i] = s_x_ext[i]
+        else:
+            out_x[i] = s_x_ext[i + 1]
+    k_rel_x = np.array([prop.k_rel_ph_1val(s_o, ph) for s_o in out_x])  # consuming)
+    sigma = k_rel_x.max()
+    ##############################################
+    s_b_test_y = np.ones((1, prop.ny)) * s_b_test_x[0]
+    p_b_test_y = np.ones((1, prop.ny)) * p_b_test_x[0]
+
+    s_y_ext = np.append(s.v.reshape((prop.nx, prop.ny)), s_b_test_y, axis=0)
+    s_y_ext = s_y_ext.T.reshape(-1)
+    s_y_ext = np.insert(s_y_ext, 0, s.bound_v)
+
+    p_y_ext = np.append(p.v.reshape((prop.nx, prop.ny)), p_b_test_y, axis=0)
+    p_y_ext = p_y_ext.T.reshape(-1)
+    p_y_ext = np.insert(p_y_ext, 0, p.bound_v)
+
+    out_y = np.zeros((prop.nx + 1) * prop.ny)
+
+    for i in range(len(p_y_ext) - 1):
+        if p_y_ext[i] >= p_y_ext[i + 1]:
+            out_y[i] = s_y_ext[i]
+        elif p_y_ext[i] <= p_y_ext[i + 1]:
+            out_y[i] = s_y_ext[i + 1]
+
+    k_rel_y = np.array([prop.k_rel_ph_1val(s_o, ph) for s_o in out_y])  # consuming
+    sigma = min(sigma, k_rel_y.max())
+    # k_rel_w_y = [f(1 - s_o) for s_o in out_y] # consuming
+
+    # let's go diagonals
+    # main is first
+    # for x we need to drop first and last col
+    main_dia = np.zeros(prop.nx * prop.ny)
+    main_dia += np.delete(k_rel_x.reshape((prop.nx, prop.ny + 1)), obj=-1, axis=1).reshape(-1)
+    main_dia += np.delete(k_rel_x.reshape((prop.nx, prop.ny + 1)), obj=0, axis=1).reshape(-1)
+
+    main_dia += np.delete(k_rel_y.reshape((prop.ny, prop.nx + 1)), obj=-1, axis=1).T.reshape(-1)
+    main_dia += np.delete(k_rel_y.reshape((prop.ny, prop.nx + 1)), obj=0, axis=1).T.reshape(-1)
+
+    close_dia = k_rel_x.reshape((prop.nx, prop.ny + 1))
+    close_dia = np.delete(close_dia, obj=-1, axis=1)
+    close_dia = close_dia.reshape(-1)
+    close_dia *= prop.mask_close
+
+    dist_dia = k_rel_y.reshape((prop.ny, prop.nx + 1))
+    dist_dia = np.delete(dist_dia, obj=-1, axis=1)
+    dist_dia = np.delete(dist_dia, obj=0, axis=1)
+    dist_dia = dist_dia.T.reshape(-1)
+
+    lapl = scipy.sparse.diags(diagonals=[dist_dia, close_dia[1:],
+                                         -1 * main_dia,
+                                         close_dia[1:], dist_dia
+                                         ],
+                              offsets=[-1 * prop.ny, -1, 0, 1, prop.ny]).toarray()
+    lapl *= prop.k * prop.d * prop.dy / prop.mu[ph] / prop.dx
+    sigma *= prop.k * prop.d * prop.dy / prop.mu[ph] / prop.dx
+    return lapl, sigma
 
 
-def get_q_bound(p, s, ph, prop: Properties):
-    out = np.zeros((prop.nx, prop.ny))
+def get_lapl_one_ph(p: ResState, s: ResState, ph: str, prop: Properties, dtype=None, device=None):
+    if (type(p.v) == np.ndarray) & (type(s.v) == np.ndarray):
+        lapl, sigma = get_lapl_one_ph_np(p=p, s=s, ph=ph, prop=prop)
+        if (dtype is not None) | (dtype is not None):
+            lapl = torch.tensor(lapl, device=device, dtype=dtype)
+        return lapl, sigma
+    elif (type(p.v) == torch.Tensor) & (type(s.v) == torch.Tensor):
+        if (dtype is None) | (dtype is None):
+            'for torch need device and dtype as entrance for get_lapl_one_ph '
+        p.v = p.v.cpu().numpy()
+        s.v = s.v.cpu().numpy()
+        lapl, sigma = get_lapl_one_ph_np(p=p, s=s, ph='o', prop=prop)
+        s.v = torch.tensor(s.v, device=device, dtype=dtype)
+        p.v = torch.tensor(p.v, device=device, dtype=dtype)
+        lapl = torch.tensor(lapl, device=device, dtype=dtype)
+        return lapl, sigma
+    else:
+        'dunno what get_lapl_one_ph got as p and s'
+
+
+def get_q_bound(p: ResState, s, ph, prop: Properties, q_b):
+    q_b *= 0
     for row in range(prop.nx):
         # (row, -0.5)
         k_r = prop.k_rel_ph(s_1=s[row, -1], s_2=s[row, 0],
                             p_1=p[row, -1], p_2=p[row, 0],
                             ph=ph)
-        out[row, 0] += prop.k * k_r / prop.dx * p[row, -0.5]
+
+        dia_ = u.two_dim_index_to_one(i=row, j=0, ny=prop.ny)
+        q_b[dia_, 0] += prop.k * k_r / prop.dx * p[row, -0.5] * prop.d * prop.dy / prop.mu[ph]
         # (row, ny-0.5)
-        k_r = prop.k_rel_ph(s_1=s[row, prop.ny], s_2=s[row, prop.ny - 1],
-                            p_1=p[row, prop.ny], p_2=p[row, prop.ny - 1],
+        k_r = prop.k_rel_ph(s_1=s[row, prop.ny - 1], s_2=s[row, prop.ny],
+                            p_1=p[row, prop.ny - 1], p_2=p[row, prop.ny],
                             ph=ph)
-        out[row, prop.ny - 1] += prop.k * k_r / prop.dx * p[row, prop.ny - 0.5]
+        dia_ = u.two_dim_index_to_one(i=row, j=prop.ny - 1, ny=prop.ny)
+        q_b[dia_, 0] += prop.k * k_r / prop.dx * p[row, prop.ny - 0.5] * prop.d * prop.dy / prop.mu[ph]
 
     for col in range(prop.ny):
         # (-0.5, col)
         k_r = prop.k_rel_ph(s_1=s[-1, col], s_2=s[0, col],
                             p_1=p[-1, col], p_2=p[0, col],
                             ph=ph)
-        out[0, col] += prop.k * k_r / prop.dx * p[-0.5, col]
+        dia_ = u.two_dim_index_to_one(i=0, j=col, ny=prop.ny)
+        q_b[dia_, 0] += prop.k * k_r / prop.dx * p[-0.5, col] * prop.d * prop.dy / prop.mu[ph]
         # (nx-0.5, col)
-        k_r = prop.k_rel_ph(s_1=s[prop.nx, col], s_2=s[prop.nx - 1, col],
-                            p_1=p[prop.nx, col], p_2=p[prop.nx - 1, col],
+        k_r = prop.k_rel_ph(s_1=s[prop.nx - 1, col], s_2=s[prop.nx, col],
+                            p_1=p[prop.nx - 1, col], p_2=p[prop.nx, col],
                             ph=ph)
-        out[prop.nx - 1, col] += prop.k * k_r / prop.dx * p[prop.nx - 0.5, col]
-    out *= prop.d * prop.dy / prop.mu[ph]
-    return out.reshape((prop.nx * prop.ny, 1))
+        dia_ = u.two_dim_index_to_one(i=prop.nx - 1, j=col, ny=prop.ny)
+        q_b[dia_, 0] += prop.k * k_r / prop.dx * p[prop.nx - 0.5, col] * prop.d * prop.dy / prop.mu[ph]
+        # corners to zero
+    # return q_b.reshape((prop.nx * prop.ny, 1))
 
 
 def get_r_ref(prop: Properties):
     return 1 / (1 / prop.dx + np.pi / prop.d)
 
 
-def get_j_matrix(p, s, pos_r, ph, prop: Properties):
-    out = np.zeros((prop.nx, prop.ny))
+def get_j_matrix(s, p, pos_r, ph, prop: Properties, j_matr):
     r_ref = get_r_ref(prop)
     for pos in pos_r:
-        out[pos] = 4 * np.pi * prop.k / prop.b[ph] / prop.mu[ph]
-        out[pos] *= r_ref * pos_r[pos]
-        out[pos] /= (r_ref + pos_r[pos])
-        out[pos] *= prop.k_rel_ph(s_1=s[pos[0], pos[1]], s_2=s[pos[0], pos[1]],
-                                  p_1=p[pos[0], pos[1]], p_2=p[pos[0], pos[1]],
-                                  ph=ph)
-    return out.reshape((prop.nx * prop.ny, 1))
+        dia_pos = u.two_dim_index_to_one(i=pos[0], j=pos[1], ny=prop.ny)
+        _p = 4 * np.pi * prop.k / prop.b[ph] / prop.mu[ph]
+        _p *= r_ref * pos_r[pos]
+        _p /= (r_ref + pos_r[pos])
+
+        _p *= prop.k_rel_ph(s_1=s[pos[0], pos[1]], s_2=s[pos[0], pos[1]],
+                            p_1=p[pos[0], pos[1]], p_2=p[pos[0], pos[1]],
+                            ph=ph)
+
+        j_matr[dia_pos] = _p
+    # return out.reshape((prop.nx * prop.ny, 1))
 
 
-def add_peice_of_lapl(target, p: ResState, s: ResState, ph: str, prop: Properties, dia_beg, dia_end):
-    # target is 1d array, just .reshape(-1)
-    for dia in range(dia_beg, dia_end):
-        i, j = u.one_d_index_to_two(one_d=dia, ny=prop.ny)  # indexes for 2d prop matrix
-        flated_dia = u.two_dim_index_to_one(i=dia, j=dia, ny=prop.nx * prop.nx)
-        target[flated_dia] -= prop.k * prop.k_rel_ph(s_1=s[i, j - 1], s_2=s[i, j], p_1=p[i, j - 1], p_2=p[i, j],
-                                                     ph=ph) * \
-                              prop.d * prop.dy / prop.mu[ph] / prop.dx
-        target[flated_dia] -= prop.k * prop.k_rel_ph(s_1=s[i, j + 1], s_2=s[i, j], p_1=p[i, j + 1], p_2=p[i, j],
-                                                     ph=ph) * \
-                              prop.d * prop.dy / prop.mu[ph] / prop.dx
-        target[flated_dia] -= prop.k * prop.k_rel_ph(s_1=s[i - 1, j], s_2=s[i, j], p_1=p[i - 1, j], p_2=p[i, j],
-                                                     ph=ph) * \
-                              prop.d * prop.dy / prop.mu[ph] / prop.dx
-        target[flated_dia] -= prop.k * prop.k_rel_ph(s_1=s[i + 1, j], s_2=s[i, j], p_1=p[i + 1, j], p_2=p[i, j],
-                                                     ph=ph) * \
-                              prop.d * prop.dy / prop.mu[ph] / prop.dx
-        if j - 1 >= 0:
-            flated_dia = u.two_dim_index_to_one(i=dia, j=dia - 1, ny=prop.nx * prop.nx)
-            target[flated_dia] += prop.k * prop.k_rel_ph(s_1=s[i, j - 1], s_2=s[i, j],
-                                                         p_1=p[i, j - 1], p_2=p[i, j],
-                                                         ph=ph) * \
-                                  prop.d * prop.dy / prop.mu[ph] / prop.dx
-        if j + 1 < prop.ny:
-            flated_dia = u.two_dim_index_to_one(i=dia, j=dia + 1, ny=prop.nx * prop.nx)
-            target[flated_dia] += prop.k * prop.k_rel_ph(s_1=s[i, j + 1], s_2=s[i, j],
-                                                         p_1=p[i, j + 1], p_2=p[i, j],
-                                                         ph=ph) * \
-                                  prop.d * prop.dy / prop.mu[ph] / prop.dx
-        if i - 1 >= 0:
-            dia_ = u.two_dim_index_to_one(i=i - 1, j=j, ny=prop.ny)
-            flated_dia = u.two_dim_index_to_one(i=dia, j=dia_, ny=prop.nx * prop.nx)
-            target[flated_dia] += prop.k * prop.k_rel_ph(s_1=s[i - 1, j], s_2=s[i, j],
-                                                         p_1=p[i - 1, j], p_2=p[i, j],
-                                                         ph=ph) * \
-                                  prop.d * prop.dy / prop.mu[ph] / prop.dx
-        if i + 1 < prop.nx:
-            dia_ = u.two_dim_index_to_one(i=i + 1, j=j, ny=prop.ny)
-            flated_dia = u.two_dim_index_to_one(i=dia, j=dia_, ny=prop.nx * prop.nx)
-            target[flated_dia] += prop.k * prop.k_rel_ph(s_1=s[i + 1, j], s_2=s[i, j],
-                                                         p_1=p[i + 1, j], p_2=p[i, j],
-                                                         ph=ph) * \
-                                  prop.d * prop.dy / prop.mu[ph] / prop.dx
+class Env:
+    def __init__(self, p, s_o: ResState, s_w: ResState, prop: Properties, pos_r: dict, delta_p_well: float):
+        self.p = p
+        self.s_o = s_o
+        self.s_w = s_w
+        self.prop = prop
+        self.pos_r = pos_r
 
+        self.j_o = np.zeros((prop.nx * prop.ny, 1))
+        self.j_w = np.zeros((prop.nx * prop.ny, 1))
 
-def get_lapl_one_ph_mth(p: ResState, s: ResState, ph: str, prop: Properties, n_th):
-    # Create a list of jobs and then iterate through
-    # the number of processes appending each process to
-    # the job list
-    jobs = []
-    lapl_1d = multiprocessing.sharedctypes.Array('d', (prop.nx * prop.ny) ** 2, lock=False)
-    for i, inter in enumerate(get_segm(prop.nx * prop.ny, n_th)):
-        process = multiprocessing.Process(target=add_peice_of_lapl,
-                                          args=(lapl_1d, p, s, ph, prop, inter[0], inter[1])
-                                          )
-        jobs.append(process)
+        self.q_bound_w = np.zeros((prop.nx * prop.ny, 1))
+        self.q_bound_o = np.zeros((prop.nx * prop.ny, 1))
 
-        # Start the processes (i.e. calculate the random number lists)
-    for j in jobs:
-        j.start()
+        #self.delta_p_vec = np.ones((prop.nx * prop.ny, 1)) * delta_p_well
+        #'''
+        self.delta_p_vec = np.zeros((prop.nx * prop.ny, 1))
+        for pos in pos_r:
+            self.delta_p_vec[u.two_dim_index_to_one(pos[0], pos[1], ny=prop.ny), 0] = delta_p_well
+        #'''
 
-        # Ensure all of the processes have finished
-    for j in jobs:
-        j.join()
-    return np.array(lapl_1d).reshape((prop.nx * prop.ny, prop.nx * prop.ny))
+        self.nxny_ones = np.ones((prop.nx * prop.ny, 1))
+        self.nxny_eye = np.eye(prop.nx * prop.ny)
+        self.t = 0
+        self.lapl_o = None
+        self.dt_comp_sat = None
+        self.lapl_w = None
+
+    def step(self):
+        self.dt_comp_sat = self.s_o.v * self.prop.c['o'] + self.s_w.v * self.prop.c['w']
+        self.dt_comp_sat *= self.prop.dx * self.prop.dy * self.prop.d
+        self.dt_comp_sat += self.nxny_ones * self.prop.c['r']
+
+        get_j_matrix(p=self.p, s=self.s_o, pos_r=self.pos_r, ph='o', prop=self.prop, j_matr=self.j_o)
+        get_j_matrix(p=self.p, s=self.s_w, pos_r=self.pos_r, ph='w', prop=self.prop, j_matr=self.j_w)
+
+        self.lapl_w, si_w = get_lapl_one_ph(p=self.p, s=self.s_w, ph='w', prop=self.prop)
+        self.lapl_o, si_o = get_lapl_one_ph(p=self.p, s=self.s_o, ph='o', prop=self.prop)
+
+        get_q_bound(self.p, self.s_w, 'w', self.prop, q_b=self.q_bound_w)
+        get_q_bound(self.p, self.s_o, 'o', self.prop, q_b=self.q_bound_o)
+        self.prop.dt = 0.1 * 0.5 * self.prop.phi * self.dt_comp_sat.min() / (si_o + si_w)
+        # matrix for implicit pressure
+        a = self.prop.phi * self.nxny_eye * self.dt_comp_sat - (self.lapl_w + self.lapl_o) * self.prop.dt
+        # right hand state for ax = b
+
+        b = self.prop.phi * self.dt_comp_sat * self.p.v + self.q_bound_w * self.prop.dt + self.q_bound_o * self.prop.dt
+        b += (self.j_o * self.prop.b['o'] + self.j_w * self.prop.b['w']) * self.delta_p_vec * self.prop.dt
+        # upd time stamp
+        self.t += self.prop.dt / (60. * 60 * 24)
+        # solve p
+        p_new = np.linalg.solve(a, b)
+
+        a = self.nxny_ones + (self.prop.c['r'] + self.prop.c['o']) * (p_new - self.p.v)
+        a *= self.prop.dx * self.prop.dy * self.prop.d * self.prop.phi
+
+        b = self.prop.phi * self.prop.dx * self.prop.dy * self.prop.d * self.s_o.v
+        b += self.prop.dt * (self.lapl_o.dot(p_new) + self.q_bound_o + self.j_o * self.prop.b['o'] * self.delta_p_vec)
+        # upd target values
+        self.s_o = ResState((b / a), self.s_o.bound_v, self.prop)
+        self.s_w = ResState(self.nxny_ones - self.s_o.v, self.s_w.bound_v, self.prop)
+        self.p = ResState(p_new, self.prop.p_0, self.prop)
+
+    def get_q(self, ph):
+        out = None
+        if ph == 'o':
+            out = ((-1) * self.j_o * self.delta_p_vec).reshape((self.prop.nx, self.prop.ny))
+        elif ph == 'w':
+            out = ((-1) * self.j_w * self.delta_p_vec).reshape((self.prop.nx, self.prop.ny))
+        return out
