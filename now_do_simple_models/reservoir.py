@@ -41,7 +41,8 @@ def get_lapl_one_ph_np(p: ResState, s, ph, prop: Properties):
             out_x[i] = s_x_ext[i]
         else:
             out_x[i] = s_x_ext[i + 1]
-    k_rel_x = np.array([prop.k_rel_ph_1val(s_o, ph) for s_o in out_x])  # consuming)
+    k_rel_x = prop.k_rel_ph_1val_np(out_x, ph)
+    # k_rel_x = np.array([prop.k_rel_ph_1val(s_o, ph) for s_o in out_x])  # consuming)
     sigma = k_rel_x.max()
     ##############################################
     s_b_test_y = np.ones((1, prop.ny)) * s_b_test_x[0]
@@ -62,10 +63,9 @@ def get_lapl_one_ph_np(p: ResState, s, ph, prop: Properties):
             out_y[i] = s_y_ext[i]
         elif p_y_ext[i] <= p_y_ext[i + 1]:
             out_y[i] = s_y_ext[i + 1]
-
-    k_rel_y = np.array([prop.k_rel_ph_1val(s_o, ph) for s_o in out_y])  # consuming
+    k_rel_y = prop.k_rel_ph_1val_np(out_y, ph)
+    # k_rel_y = np.array([prop.k_rel_ph_1val(s_o, ph) for s_o in out_y])  # consuming
     sigma = min(sigma, k_rel_y.max())
-    # k_rel_w_y = [f(1 - s_o) for s_o in out_y] # consuming
 
     # let's go diagonals
     # main is first
