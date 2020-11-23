@@ -36,7 +36,7 @@ def get_lapl_one_ph_np(p: ResState, s, ph, prop: Properties):
     p_x_ext = np.insert(p_x_ext, 0, p.bound_v)
 
     out_x = np.zeros(prop.nx * (prop.ny + 1))
-    for i in range(len(p_x_ext) - 1):
+    for i in range(len(p_x_ext) - 1):  # TODO this is a time consuming stuff
         if p_x_ext[i] >= p_x_ext[i + 1]:
             out_x[i] = s_x_ext[i]
         else:
