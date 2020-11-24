@@ -80,3 +80,31 @@ class Properties:
         elif p_1 <= p_2:
             out = self.k_rel_ph_1val(s=s_2, ph=ph)
         return out
+
+    def get_s_wn_ph_np(self, sat_arr: np.ndarray):
+        out = sat_arr - self.s_wir
+        out /= (self.s_wor - self.s_wir)
+        out = np.where(out >= 0, out, 0)
+        out = np.where(out < 1, out, 1)
+        return out
+
+    def k_rel_w_np(self, sat_arr: np.ndarray):
+        s_wn = self.get_s_wn_ph_np(sat_arr)
+        out = s_wn ** self.l_w * self.k_rwr
+        out /= s_wn ** self.l_w + self.e_w * (1 - s_wn) ** self.t_w
+        return out
+
+    def k_rel_o_np(self, s_o):
+        s_w = 1 - s_o
+        s_wn = self.get_s_wn_ph_np(s_w)
+        out = self.k_rot * (1 - s_wn) ** self.l_o
+        out /= (1 - s_wn) ** self.l_o + self.e_o * s_wn ** self.t_o
+        return out
+
+    def k_rel_ph_1val_np(self, s_arr, ph):
+        out = None
+        if ph == 'o':
+            out = self.k_rel_o_np(s_arr)
+        elif ph == 'w':
+            out = self.k_rel_w_np(s_arr)
+        return out

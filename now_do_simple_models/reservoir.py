@@ -35,13 +35,29 @@ def get_lapl_one_ph_np(p: ResState, s, ph, prop: Properties):
     p_x_ext = p_x_ext.reshape(-1)
     p_x_ext = np.insert(p_x_ext, 0, p.bound_v)
 
-    out_x = np.zeros(prop.nx * (prop.ny + 1))
-    for i in range(len(p_x_ext) - 1):
+    '''
+    for i in range(len(p_x_ext) - 1):  # TODO this is a time consuming stuff
         if p_x_ext[i] >= p_x_ext[i + 1]:
             out_x[i] = s_x_ext[i]
         else:
             out_x[i] = s_x_ext[i + 1]
-    k_rel_x = np.array([prop.k_rel_ph_1val(s_o, ph) for s_o in out_x])  # consuming)
+    '''
+    comp_p_get_s = np.dtype({'names': ['p1', 'p2', 's1', 's2'],
+                             'formats': [np.double,
+                                         np.double,
+                                         np.double,
+                                         np.double]})
+    p_df = np.zeros(len(p_x_ext) - 1, dtype=comp_p_get_s)
+    p_df['p1'] = p_x_ext[:-1]
+    p_df['p2'] = p_x_ext[1:]
+
+    p_df['s1'] = s_x_ext[:-1]
+    p_df['s2'] = s_x_ext[1:]
+
+    out_x = np.where(p_df['p1'] >= p_df['p2'], p_df['s1'], p_df['s2'])
+
+    k_rel_x = prop.k_rel_ph_1val_np(out_x, ph)
+    # k_rel_x = np.array([prop.k_rel_ph_1val(s_o, ph) for s_o in out_x])  # consuming)
     sigma = k_rel_x.max()
     ##############################################
     s_b_test_y = np.ones((1, prop.ny)) * s_b_test_x[0]
@@ -55,17 +71,28 @@ def get_lapl_one_ph_np(p: ResState, s, ph, prop: Properties):
     p_y_ext = p_y_ext.T.reshape(-1)
     p_y_ext = np.insert(p_y_ext, 0, p.bound_v)
 
-    out_y = np.zeros((prop.nx + 1) * prop.ny)
 
+    # TODO this is a time consuming stuff
+
+    '''
+    out_y = np.zeros((prop.nx + 1) * prop.ny)    
     for i in range(len(p_y_ext) - 1):
         if p_y_ext[i] >= p_y_ext[i + 1]:
             out_y[i] = s_y_ext[i]
         elif p_y_ext[i] <= p_y_ext[i + 1]:
             out_y[i] = s_y_ext[i + 1]
+    '''
+    p_df['p1'] = p_y_ext[:-1]
+    p_df['p2'] = p_y_ext[1:]
 
-    k_rel_y = np.array([prop.k_rel_ph_1val(s_o, ph) for s_o in out_y])  # consuming
+    p_df['s1'] = s_y_ext[:-1]
+    p_df['s2'] = s_y_ext[1:]
+
+    out_y = np.where(p_df['p1'] >= p_df['p2'], p_df['s1'], p_df['s2'])
+
+    k_rel_y = prop.k_rel_ph_1val_np(out_y, ph)
+    # k_rel_y = np.array([prop.k_rel_ph_1val(s_o, ph) for s_o in out_y])
     sigma = min(sigma, k_rel_y.max())
-    # k_rel_w_y = [f(1 - s_o) for s_o in out_y] # consuming
 
     # let's go diagonals
     # main is first
