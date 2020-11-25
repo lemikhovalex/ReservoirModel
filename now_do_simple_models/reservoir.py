@@ -242,6 +242,8 @@ class Env:
         get_q_bound(self.p, self.s_w, 'w', self.prop, q_b=self.q_bound_w)
         get_q_bound(self.p, self.s_o, 'o', self.prop, q_b=self.q_bound_o)
         # self.prop.dt = 0.1 * 0.5 * self.prop.phi * self.dt_comp_sat.min() / (si_o + si_w)
+        # set dt accoarding Courant
+        self.prop.dt = 0.1 * self.prop.phi * self.dt_comp_sat.min() / (si_o + si_w)
         # matrix for implicit pressure
         a = self.prop.phi * scipy.sparse.diags(diagonals=[self.dt_comp_sat.reshape(-1)],
                                                offsets=[0])
@@ -253,6 +255,7 @@ class Env:
         # solve p
         p_new = scipy.sparse.linalg.spsolve(a, b).reshape((-1, 1))
         # upd time stamp
+
         self.t += self.prop.dt / (60. * 60 * 24)
 
         a = self.nxny_ones + (self.prop.c['r'] + self.prop.c['o']) * (p_new - self.p.v)
