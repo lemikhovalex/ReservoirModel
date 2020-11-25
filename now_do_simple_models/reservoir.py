@@ -190,7 +190,7 @@ def get_j_matrix(s, p, pos_r, ph, prop: Properties, j_matr):
         dia_pos = u.two_dim_index_to_one(i=pos[0], j=pos[1], ny=prop.ny)
         _p = 4 * np.pi * prop.k / prop.b[ph] / prop.mu[ph]
         _p *= r_ref * pos_r[pos]
-        _p /= (r_ref + pos_r[pos])
+        _p /= (r_ref - pos_r[pos])
 
         _p *= prop.k_rel_ph(s_1=s[pos[0], pos[1]], s_2=s[pos[0], pos[1]],
                             p_1=p[pos[0], pos[1]], p_2=p[pos[0], pos[1]],
