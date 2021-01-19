@@ -1,4 +1,4 @@
-from gym_like_env import Env
+# from gym_like_env import Env
 from IPython import display
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -12,7 +12,7 @@ def id_tr(x):
 
 
 class Session:
-    def __init__(self, env: Env, n_iter=None, plot_freq=50):
+    def __init__(self, env, n_iter=None, plot_freq=50):
         self.env = env
         self.n_iter = n_iter
         self.plot_freq = plot_freq
