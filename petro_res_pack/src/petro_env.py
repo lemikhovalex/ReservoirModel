@@ -1,5 +1,7 @@
 import numpy as np
-import scipy
+import scipy.sparse as sparse
+import scipy.sparse.linalg as sp_linalg
+
 
 class Properties:
     def __init__(self, nx=25, ny=25, k=1e-1 * 1.987e-13, dx=3, dy=3, phi=0.4, p_0=150 * 10 ** 5, d=10, dt=1, s_0=0.4,
@@ -216,7 +218,7 @@ def get_lapl_one_ph_np(p: ResState, s, ph, prop: Properties):
     dist_dia = np.delete(dist_dia, obj=0, axis=1)
     dist_dia = dist_dia.T.reshape(-1)
 
-    lapl = scipy.sparse.diags(diagonals=[dist_dia, close_dia[1:],
+    lapl = sparse.diags(diagonals=[dist_dia, close_dia[1:],
                                          -1 * main_dia,
                                          close_dia[1:], dist_dia
                                          ],
@@ -374,7 +376,7 @@ class PetroEnv:
         # set dt accoarding Courant
         self.prop.dt = 0.1 * self.prop.phi * self.dt_comp_sat.min() / (si_o + si_w)
         # matrix for implicit pressure
-        a = self.prop.phi * scipy.sparse.diags(diagonals=[self.dt_comp_sat.reshape(-1)],
+        a = self.prop.phi * sparse.diags(diagonals=[self.dt_comp_sat.reshape(-1)],
                                                offsets=[0])
         # a = self.nxny_eye *  self.prop.phi * self.dt_comp_sat
         a = a - (self.lapl_w + self.lapl_o) * self.prop.dt
@@ -382,7 +384,7 @@ class PetroEnv:
         b = self.prop.phi * self.dt_comp_sat * self.p.v + self.q_bound_w * self.prop.dt + self.q_bound_o * self.prop.dt
         b += (self.j_o * self.prop.b['o'] + self.j_w * self.prop.b['w']) * self.delta_p_vec * self.prop.dt
         # solve p
-        p_new = scipy.sparse.linalg.spsolve(a, b).reshape((-1, 1))
+        p_new = sp_linalg.spsolve(a, b).reshape((-1, 1))
         # upd time stamp
 
         self.t += self.prop.dt / (60. * 60 * 24)
