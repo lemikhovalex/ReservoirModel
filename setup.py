@@ -8,7 +8,7 @@ setup(
     author_email='lemikhovalex@gmail.com',
     description='Package with gym-like env for petroleum reservoir simulation',
     py_modules=['petro_env', 'petro_session'],
-    package_dir={'': 'src'},
+    package_dir={'petro_res_pack': 'src'},
     packages=['petro_res_pack'],
     license='MIT'
 )
