@@ -2,4 +2,4 @@
 .idea
 __pycache__
 /venv
-/petro_res_pack/src/PetroResPack.egg-info/
+/ReservoirModel/src/PetroResPack.egg-info/
