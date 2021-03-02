@@ -1,5 +1,5 @@
 from setuptools import setup
-from setuptools import find_packages
+import pkg_resources
 
 setup(
     name='petro_res_pack',
@@ -10,4 +10,5 @@ setup(
     description='Package with gym-like env for petroleum reservoir simulation',
     py_modules=['petro_env', 'petro_session'],
     license='MIT',
+    install_reqs=pkg_resources.parse_requirements('requirements.txt')
 )
