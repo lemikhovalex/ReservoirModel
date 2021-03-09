@@ -4,8 +4,8 @@ import scipy.sparse.linalg as sp_linalg
 
 
 class Properties:
-    def __init__(self, nx=25, ny=25, k=1e-1 * 1.987e-13, dx=3, dy=3, phi=0.4, p_0=150 * 10 ** 5, d=10, dt=1, s_0=0.4,
-                 c_w=1e-6, c_o=1e-6, c_r=3e-6, mu_w=1 / 1000., mu_o=15 / 1000., b_o=1., b_w=1., l_w=2., l_o=2.,
+    def __init__(self, nx=25, ny=25, k=1e-1 * 1.987e-13, dx=3, dy=3, phi=0.4, p_0=150 * 10 ** 5, d=10, dt=24316,
+                 s_0=0.4, c_w=1e-6, c_o=1e-6, c_r=3e-6, mu_w=1 / 1000., mu_o=15 / 1000., b_o=1., b_w=1., l_w=2., l_o=2.,
                  s_wir=0.2, s_wor=0.8, k_rwr=0.1, k_rot=1., e_w=1., e_o=1., t_w=2., t_o=2.
                  ):
         # res propetis
@@ -372,12 +372,11 @@ class PetroEnv:
 
         get_q_bound(self.p, self.s_w, 'w', self.prop, q_b=self.q_bound_w)
         get_q_bound(self.p, self.s_o, 'o', self.prop, q_b=self.q_bound_o)
-        # self.prop.dt = 0.1 * 0.5 * self.prop.phi * self.dt_comp_sat.min() / (si_o + si_w)
         # set dt accoarding Courant
-        self.prop.dt = 0.1 * self.prop.phi * self.dt_comp_sat.min() / (si_o + si_w)
+        # self.prop.dt = 0.1 * self.prop.phi * self.dt_comp_sat.min() / (si_o + si_w)
         # matrix for implicit pressure
         a = self.prop.phi * sparse.diags(diagonals=[self.dt_comp_sat.reshape(-1)],
-                                               offsets=[0])
+                                         offsets=[0])
         # a = self.nxny_eye *  self.prop.phi * self.dt_comp_sat
         a = a - (self.lapl_w + self.lapl_o) * self.prop.dt
         # right hand state for ax = b
