@@ -364,8 +364,6 @@ class PetroEnv:
         if action is not None:
             for _i, well in enumerate(self.pos_r):
                 self.openity[two_dim_index_to_one(well[0], well[1], self.prop.ny), 0] = action[_i]
-            self.j_o *= self.openity
-            self.j_w *= self.openity
         # now
         self.lapl_w, si_w = get_lapl_one_ph_np(p=self.p, s=self.s_w, ph='w', prop=self.prop)
         self.lapl_o, si_o = get_lapl_one_ph_np(p=self.p, s=self.s_o, ph='o', prop=self.prop)
@@ -381,7 +379,8 @@ class PetroEnv:
         a = a - (self.lapl_w + self.lapl_o) * self.prop.dt
         # right hand state for ax = b
         b = self.prop.phi * self.dt_comp_sat * self.p.v + self.q_bound_w * self.prop.dt + self.q_bound_o * self.prop.dt
-        b += (self.j_o * self.prop.b['o'] + self.j_w * self.prop.b['w']) * self.delta_p_vec * self.prop.dt
+        b += (self.j_o * self.openity * self.prop.b['o'] + self.j_w * self.openity * self.prop.b['w'])\
+             * self.delta_p_vec * self.prop.dt
         # solve p
         p_new = sp_linalg.spsolve(a, b).reshape((-1, 1))
         # upd time stamp
@@ -410,7 +409,7 @@ class PetroEnv:
             out = ((-1) * self.j_o * self.delta_p_vec).reshape((self.prop.nx, self.prop.ny))
         elif ph == 'w':
             out = ((-1) * self.j_w * self.delta_p_vec).reshape((self.prop.nx, self.prop.ny))
-        return out * self.openity.reshape((self.prop.nx, self.prop.ny))
+        return out
 
     def get_reward(self):
         q_o = self.get_q('o')
@@ -446,3 +445,21 @@ class PetroEnv:
         self.openity = np.zeros(self.prop.nx * self.prop.ny)
         obs = self.get_observation(s_o=self.s_o, p=self.p, prop=self.prop)
         return obs
+
+    def get_q_act(self, ph: str, action):
+        openity = np.ones((self.prop.nx * self.prop.ny, 1))
+        if action is not None:
+            for _i, well in enumerate(self.pos_r):
+                self.openity[two_dim_index_to_one(well[0], well[1], self.prop.ny), 0] = action[_i]
+        out = None
+        if ph == 'o':
+            out = ((-1) * self.j_o * self.delta_p_vec * openity).reshape((self.prop.nx, self.prop.ny))
+        elif ph == 'w':
+            out = ((-1) * self.j_w * self.delta_p_vec * openity).reshape((self.prop.nx, self.prop.ny))
+        return out
+
+    def evaluate_action(self, action):
+        q_o = self.get_q_act('o', action)
+        q_w = self.get_q_act('w', action)
+
+        return (self.price['o'] * q_o.sum() - self.price['w'] * q_w.sum()) * self.prop.dt
