@@ -450,7 +450,7 @@ class PetroEnv:
         openity = np.ones((self.prop.nx * self.prop.ny, 1))
         if action is not None:
             for _i, well in enumerate(self.pos_r):
-                self.openity[two_dim_index_to_one(well[0], well[1], self.prop.ny), 0] = action[_i]
+                openity[two_dim_index_to_one(well[0], well[1], self.prop.ny), 0] = action[_i]
         out = None
         if ph == 'o':
             out = ((-1) * self.j_o * self.delta_p_vec * openity).reshape((self.prop.nx, self.prop.ny))
