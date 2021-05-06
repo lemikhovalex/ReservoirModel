@@ -101,7 +101,7 @@ class Session:
                     self.p_well_hist[w].append(np.array(self.openness_loc[w]).mean())
                     self.s_o_well_hist[w].append(np.array(self.s_o_well_hist_loc[w]).mean())
                     self.q_o_hist[w].append(np.array(self.q_o_hist_loc[w]).mean())
-                    self.q_w_hist[w].append(np.array(self.q_w_hist[w]).mean())
+                    self.q_w_hist[w].append(np.array(self.q_w_hist_loc[w]).mean())
                     self.openness[w].append(np.array(self.openness_loc[w]).mean())
 
                     self.openness_loc[w] = []
