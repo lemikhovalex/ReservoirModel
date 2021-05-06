@@ -22,14 +22,26 @@ class Session:
         self.s_o_well_hist = {}
         self.q_o_hist = {}
         self.q_w_hist = {}
-        self.openity = {}
+        self.openness = {}
+
+        self.p_well_hist_loc = {}
+        self.s_o_well_hist_loc = {}
+        self.q_o_hist_loc = {}
+        self.q_w_hist_loc = {}
+        self.openness_loc = {}
         self.i = 0
         for w in self.env.pos_r:
             self.p_well_hist[w] = []
             self.s_o_well_hist[w] = []
             self.q_o_hist[w] = []
             self.q_w_hist[w] = []
-            self.openity[w] = []
+            self.openness[w] = []
+
+            self.p_well_hist_loc[w] = []
+            self.s_o_well_hist_loc[w] = []
+            self.q_o_hist_loc[w] = []
+            self.q_w_hist_loc[w] = []
+            self.openness_loc[w] = []
 
     def done(self):
         out = False
@@ -74,18 +86,30 @@ class Session:
             state = obs_trans_func(state)
             self.i += 1
             self.i += 1
+            q_o = self.env.get_q(ph='o')
+            q_w = self.env.get_q(ph='w')
+
+            for _i, w in enumerate(self.env.pos_r):
+                self.p_well_hist_loc[w].append(self.env.p[w] / 6894.)
+                self.s_o_well_hist_loc[w].append(self.env.s_o[w])
+                self.q_o_hist_loc[w].append(q_o[w] * 3600)
+                self.q_w_hist_loc[w].append(q_w[w] * 3600)
+                self.openness_loc[w].append(action[_i])
             if self.i % self.plot_freq == 0:
-
-                q_o = self.env.get_q(ph='o')
-                q_w = self.env.get_q(ph='w')
-
                 self.times.append(self.env.t)
                 for _i, w in enumerate(self.env.pos_r):
-                    self.p_well_hist[w].append(self.env.p[w] / 6894.)
-                    self.s_o_well_hist[w].append(self.env.s_o[w])
-                    self.q_o_hist[w].append(q_o[w] * 3600)
-                    self.q_w_hist[w].append(q_w[w] * 3600)
-                    self.openity[w].append(action[_i])
+                    self.p_well_hist[w].append(np.array(self.openness_loc[w]).mean())
+                    self.s_o_well_hist[w].append(np.array(self.s_o_well_hist_loc[w]).mean())
+                    self.q_o_hist[w].append(np.array(self.q_o_hist_loc[w]).mean())
+                    self.q_w_hist[w].append(np.array(self.q_w_hist[w]).mean())
+                    self.openness[w].append(np.array(self.openness_loc[w]).mean())
+
+                    self.openness_loc[w] = []
+                    self.openness_loc[w] = []
+                    self.s_o_well_hist_loc[w] = []
+                    self.q_o_hist_loc[w] = []
+                    self.openness_loc[w] = []
+
                     # set wells as nan to see gradient
                     # p_v_disp[w] = np.nan
                     # s_o_disp[w] = np.nan
@@ -115,7 +139,7 @@ class Session:
                     ax[1][1].plot(self.times, self.s_o_well_hist[w], label=f'{w}')
                     ax[2][0].plot(self.times, self.q_o_hist[w], label=f'{w}')
                     ax[2][1].plot(self.times, self.q_w_hist[w], label=f'{w}')
-                    ax[3][0].plot(self.times, self.openity[w], label=f'{w}')
+                    ax[3][0].plot(self.times, self.openness[w], label=f'{w}')
                     well_prof = np.array(self.q_o_hist[w]) * self.env.price['o'] * 6.28981
                     well_prof -= np.array(self.q_w_hist[w]) * self.env.price['w'] * 6.28981
                     ax[3][1].plot(self.times, well_prof, label=f'{w}')
