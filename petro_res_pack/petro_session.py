@@ -65,6 +65,8 @@ class Session:
                 if policy is not None:
                     action = policy.sample_actions(state)
                     action = policy.act_to_openness(action)
+                    if type(action) == torch.tensor:
+                        action = action.numpy()
                 else:
                     action = np.ones(len(self.env.pos_r))
 
