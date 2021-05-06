@@ -446,3 +446,27 @@ class PetroEnv:
         self.openity = np.zeros(self.prop.nx * self.prop.ny)
         obs = self.get_observation(s_o=self.s_o, p=self.p, prop=self.prop)
         return obs
+
+    def get_q_act(self, ph: str, action: np.ndarray) -> np.ndarray:
+        j_o = np.zeros((self.prop.nx * self.prop.ny, 1))
+        j_w = np.zeros((self.prop.nx * self.prop.ny, 1))
+        get_j_matrix(p=self.p, s=self.s_o, pos_r=self.pos_r, ph='o', prop=self.prop, j_matr=j_o)
+        get_j_matrix(p=self.p, s=self.s_w, pos_r=self.pos_r, ph='w', prop=self.prop, j_matr=j_w)
+
+        openity = np.ones((self.prop.nx * self.prop.ny, 1))
+        if action is not None:
+            for _i, well in enumerate(self.pos_r):
+                openity[two_dim_index_to_one(well[0], well[1], self.prop.ny), 0] = action[_i]
+            j_o *= openity
+            j_w *= openity
+        out = None
+        if ph == 'o':
+            out = ((-1) * j_o * self.delta_p_vec).reshape((self.prop.nx, self.prop.ny))
+        elif ph == 'w':
+            out = ((-1) * j_w * self.delta_p_vec).reshape((self.prop.nx, self.prop.ny))
+        return out * openity.reshape((self.prop.nx, self.prop.ny))
+
+    def evaluate_action(self, action: np.ndarray) -> float:
+        q_o = self.get_q_act('o', action)
+        q_w = self.get_q_act('w', action)
+        return (self.price['o'] * q_o.sum() - self.price['w'] * q_w.sum()) * self.prop.dt
