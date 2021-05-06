@@ -63,14 +63,12 @@ class Session:
 
             with torch.no_grad():
                 if policy is not None:
-                    action_pred, _ = policy(state)
-                    action_prob = F.softmax(action_pred.view((n_wells, openity_states)), dim=-1)
-                    action = torch.argmax(action_prob, dim=1)
+                    action = policy.sample_actions(state)
+                    action = policy.act_to_openness(action)
                 else:
-                    action = torch.ones(len(self.env.pos_r)) * float(openity_states - 1)
+                    action = np.ones(len(self.env.pos_r))
 
-            wells_openity = action.numpy().reshape(-1) / float(openity_states - 1)
-            state, reward, env_done, _ = self.env.step(wells_openity)
+            state, reward, env_done, _ = self.env.step(action)
             state = obs_trans_func(state)
             self.i += 1
             self.i += 1
@@ -85,7 +83,7 @@ class Session:
                     self.s_o_well_hist[w].append(self.env.s_o[w])
                     self.q_o_hist[w].append(q_o[w] * 3600)
                     self.q_w_hist[w].append(q_w[w] * 3600)
-                    self.openity[w].append(wells_openity[_i])
+                    self.openity[w].append(action[_i])
                     # set wells as nan to see gradient
                     # p_v_disp[w] = np.nan
                     # s_o_disp[w] = np.nan
