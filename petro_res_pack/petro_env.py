@@ -470,3 +470,29 @@ class PetroEnv:
         q_o = self.get_q_act('o', action)
         q_w = self.get_q_act('w', action)
         return (self.price['o'] * q_o.sum() - self.price['w'] * q_w.sum()) * self.prop.dt
+
+    def evaluate_strategy(self, strategy='max_reward_for_each_time_step'):
+        out = 0
+        done = False
+        _ = self.reset()
+        while not done:
+            # decide on action
+            action = self.get_action(strategy)
+            _, r, done, _ = self.step(action)
+            out += r
+        return out
+
+    def get_action(self, strategy):
+        out = None
+        if strategy == 'max_reward_for_each_time_step':
+            out = self.__get_act_max_reward_for_each_time_step()
+        if out is None:
+            raise NotImplementedError
+        return out
+
+    def __get_act_max_reward_for_each_time_step(self):
+        action = np.ones(len(self.pos_r))
+        for _i, well in enumerate(self.pos_r):
+            s_check = self.s_o[well]
+            action[_i] = 0. if s_check < self.s_star else 1.
+        return action
