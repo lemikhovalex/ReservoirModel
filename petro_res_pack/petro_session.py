@@ -75,7 +75,7 @@ class Session:
 
             with torch.no_grad():
                 if policy is not None:
-                    action = policy.sample_actions(state)
+                    action = policy.sample_actions(state)[0]
                     action = policy.act_to_openness(action)
                     if type(action) == torch.tensor:
                         action = action.numpy()
