@@ -29,6 +29,8 @@ class Session:
         self.q_o_hist_loc = {}
         self.q_w_hist_loc = {}
         self.openness_loc = {}
+        self.wells_benefit = {}
+        self.wells_benefit_loc = {}
         self.i = 0
         for w in self.env.pos_r:
             self.p_well_hist[w] = []
@@ -36,12 +38,14 @@ class Session:
             self.q_o_hist[w] = []
             self.q_w_hist[w] = []
             self.openness[w] = []
+            self.wells_benefit[w] = []
 
             self.p_well_hist_loc[w] = []
             self.s_o_well_hist_loc[w] = []
             self.q_o_hist_loc[w] = []
             self.q_w_hist_loc[w] = []
             self.openness_loc[w] = []
+            self.wells_benefit_loc[w] = []
 
     def done(self):
         out = False
@@ -88,31 +92,36 @@ class Session:
             self.i += 1
             q_o = self.env.get_q(ph='o')
             q_w = self.env.get_q(ph='w')
-
+            # save local data to average them later
             for _i, w in enumerate(self.env.pos_r):
                 self.p_well_hist_loc[w].append(self.env.p[w] / 6894.)
                 self.s_o_well_hist_loc[w].append(self.env.s_o[w])
                 self.q_o_hist_loc[w].append(q_o[w] * 3600)
                 self.q_w_hist_loc[w].append(q_w[w] * 3600)
                 self.openness_loc[w].append(action[_i])
+                __benefit = self.q_o_hist_loc[w][-1] * self.env.price['o'] * 6.28981
+                __benefit -= self.q_w_hist_loc[w][-1] * self.env.price['w'] * 6.28981
+                self.wells_benefit_loc[w].append(__benefit)
+
+            # let's plot averaged data and set local hist to []
             if self.i % self.plot_freq == 0:
                 self.times.append(self.env.t)
+                #
                 for _i, w in enumerate(self.env.pos_r):
-                    self.p_well_hist[w].append(np.array(self.openness_loc[w]).mean())
+                    self.p_well_hist[w].append(np.array(self.p_well_hist_loc[w]).mean())
                     self.s_o_well_hist[w].append(np.array(self.s_o_well_hist_loc[w]).mean())
                     self.q_o_hist[w].append(np.array(self.q_o_hist_loc[w]).mean())
                     self.q_w_hist[w].append(np.array(self.q_w_hist_loc[w]).mean())
                     self.openness[w].append(np.array(self.openness_loc[w]).mean())
+                    self.wells_benefit[w].append(np.array(self.wells_benefit_loc[w]).mean())
 
                     self.openness_loc[w] = []
                     self.openness_loc[w] = []
                     self.s_o_well_hist_loc[w] = []
                     self.q_o_hist_loc[w] = []
                     self.openness_loc[w] = []
+                    self.wells_benefit_loc[w] = []
 
-                    # set wells as nan to see gradient
-                    # p_v_disp[w] = np.nan
-                    # s_o_disp[w] = np.nan
                 display.clear_output(wait=True)
                 f, ax = plt.subplots(nrows=4, ncols=2, figsize=(16, 12))
                 f.tight_layout(pad=6.0)
@@ -140,9 +149,7 @@ class Session:
                     ax[2][0].plot(self.times, self.q_o_hist[w], label=f'{w}')
                     ax[2][1].plot(self.times, self.q_w_hist[w], label=f'{w}')
                     ax[3][0].plot(self.times, self.openness[w], label=f'{w}')
-                    well_prof = np.array(self.q_o_hist[w]) * self.env.price['o'] * 6.28981
-                    well_prof -= np.array(self.q_w_hist[w]) * self.env.price['w'] * 6.28981
-                    ax[3][1].plot(self.times, well_prof, label=f'{w}')
+                    ax[3][1].plot(self.times,  self.wells_benefit[w], label=f'{w}')
                 ax[1][0].set_xlabel('time, days', fontsize=label_font_size)
                 ax[1][0].set_ylabel('pressure, psi', fontsize=label_font_size)
                 ax[1][0].set_title('Pressure in wells', fontsize=title_font_size)
