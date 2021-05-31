@@ -120,6 +120,7 @@ class Session:
                     self.openness_loc[w] = []
                     self.s_o_well_hist_loc[w] = []
                     self.q_o_hist_loc[w] = []
+                    self.q_w_hist_loc[w] = []
                     self.openness_loc[w] = []
                     self.wells_benefit_loc[w] = []
 
