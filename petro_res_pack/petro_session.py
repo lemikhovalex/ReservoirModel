@@ -13,7 +13,8 @@ def id_tr(x):
 
 
 class Session:
-    def __init__(self, env, n_iter=None, plot_freq=50):
+    def __init__(self, env, n_iter=None, plot_freq=50, dpi=300):
+        self.dpi = dpi
         self.env = env
         self.n_iter = n_iter
         self.plot_freq = plot_freq
@@ -201,7 +202,7 @@ class Session:
 
                 plt.tight_layout()
                 if save:
-                    plt.savefig(f'{path}/{self.i:06}.png')
+                    plt.savefig(f'{path}/{self.i:06}.png', dpi=self.dpi)
                 plt.show()
 
     def reset(self):
