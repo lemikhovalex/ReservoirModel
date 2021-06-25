@@ -1,11 +1,11 @@
 numpy~=1.19.5
 matplotlib~=3.3.2
 seaborn~=0.11.0
-ipython~=7.17.0
-Reservoir~=0.1.1
+ipython
 pandas~=1.1.0
-sklearn~=0.0
 scikit-learn~=0.23.2
-scipy~=1.6.0
+scipy
 setuptools~=41.2.0
-torch~=1.7.0+cu101
+--find-links https://download.pytorch.org/whl/torch_stable.html
+
+torch==1.8.1+cpu
