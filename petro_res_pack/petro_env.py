@@ -208,7 +208,7 @@ class PetroEnv:
 
     def prepro_s(self, s_o: ResState) -> np.ndarray:
         out = s_o.v - self.s_star
-        out /= [0.5 - 0.2]
+        out /= 0.5 - 0.2
         return out
 
     def get_observation(self, s_o: ResState, p: ResState, prop: Properties):
