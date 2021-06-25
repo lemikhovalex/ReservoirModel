@@ -209,8 +209,6 @@ class PetroEnv:
     def prepro_s(self, s_o: ResState) -> np.ndarray:
         out = s_o.v - self.s_star
         out /= [0.5 - 0.2]
-        out[out > 0] += 0.1
-        out[out < 0] -= 0.1
         return out
 
     def get_observation(self, s_o: ResState, p: ResState, prop: Properties):
@@ -338,11 +336,19 @@ class PetroEnv:
         return out * openity.reshape((self.prop.nx, self.prop.ny))
 
     def evaluate_action(self, action: np.ndarray) -> float:
+        """
+        the envinroment is assosiated with state. So this function estimates reward for given action
+        Args:
+            action: numpy array with openness of each well
+
+        Returns: reward as float
+
+        """
         q_o = self.get_q_act('o', action)
         q_w = self.get_q_act('w', action)
         return (self.price['o'] * q_o.sum() - self.price['w'] * q_w.sum()) * self.prop.dt
 
-    def evaluate_strategy(self, strategy='max_reward_for_each_time_step'):
+    def evaluate_strategy(self, strategy='max_reward_for_each_time_step') -> float:
         out = 0
         done = False
         _ = self.reset()
@@ -368,5 +374,9 @@ class PetroEnv:
             action[_i] = 0. if s_check < self.s_star else 1.
         return action
 
-    def estimate_dt(self):
+    def estimate_dt(self) -> float:
+        """
+        Function estimates max possible dt for this sates
+        Returns: time as seconds
+        """
         return self.prop.phi * self.dt_comp_sat.min() / (self.si_o + self.si_w)
