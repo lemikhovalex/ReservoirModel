@@ -222,6 +222,8 @@ class PetroEnv:
         if action is not None:
             assert len(self.pos_r) == len(action)  # wanna same wells
 
+        reward = self.evaluate_action(action)
+
         self.dt_comp_sat = self.s_o.v * self.prop.c['o'] + self.s_w.v * self.prop.c['w']
         self.dt_comp_sat += self.nxny_ones * self.prop.c['r']
         self.dt_comp_sat *= self.prop.dx * self.prop.dy * self.prop.d
@@ -268,8 +270,6 @@ class PetroEnv:
         self.p = ResState(p_new, self.prop.p_0, self.prop)
 
         obs = self.get_observation(s_o=self.s_o, p=self.p, prop=self.prop)
-
-        reward = self.get_reward()
 
         return [obs, reward, self.t > self.max_time, {}]
 
@@ -335,15 +335,18 @@ class PetroEnv:
             out = ((-1) * j_w * self.delta_p_vec).reshape((self.prop.nx, self.prop.ny))
         return out * openity.reshape((self.prop.nx, self.prop.ny))
 
-    def evaluate_action(self, action: np.ndarray) -> float:
+    def evaluate_action(self, action: np.ndarray = None) -> float:
         """
         the envinroment is assosiated with state. So this function estimates reward for given action
         Args:
             action: numpy array with openness of each well
 
         Returns: reward as float
-
         """
+
+        if action is None:
+            action = np.ones(len(self.pos_r))
+
         q_o = self.get_q_act('o', action)
         q_w = self.get_q_act('w', action)
         return (self.price['o'] * q_o.sum() - self.price['w'] * q_w.sum()) * self.prop.dt
