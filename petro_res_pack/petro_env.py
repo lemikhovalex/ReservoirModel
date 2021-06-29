@@ -1,12 +1,26 @@
 import numpy as np
 import scipy.sparse as sparse
-import scipy.sparse.linalg as sp_linalg
+import scipy.sparse.linalg as sp_lin_alg
 from .properties import Properties
 from .res_state import ResState
 from .utils import two_dim_index_to_one
 
 
-def get_lapl_one_ph_np(p: ResState, s, ph, prop: Properties):
+def pad_with(vector, pad_width, kwargs):
+    pad_value = kwargs.get('pad_value', 10)
+    vector[:pad_width[0]] = pad_value
+    vector[-pad_width[1]:] = pad_value
+
+
+def get_sub_matrix(x_, k_size, center, pad):
+    x_padded_ = np.pad(x_, k_size // 2, pad_with, pad_value=pad)
+    out = x_padded_[center[0]: center[0] + 2 * (k_size // 2) + 1,
+                    center[1]: center[1] + 2 * (k_size // 2) + 1
+                    ]
+    return out
+
+
+def get_laplace_one_ph_np(p: ResState, s, ph, prop: Properties):
     s_b_test_x = np.ones((prop.nx, 1)) * s.bound_v
     p_b_test_x = np.ones((prop.nx, 1)) * p.bound_v
 
@@ -87,10 +101,10 @@ def get_lapl_one_ph_np(p: ResState, s, ph, prop: Properties):
     dist_dia = dist_dia.T.reshape(-1)
 
     lapl = sparse.diags(diagonals=[dist_dia, close_dia[1:],
-                                         -1 * main_dia,
-                                         close_dia[1:], dist_dia
-                                         ],
-                              offsets=[-1 * prop.ny, -1, 0, 1, prop.ny])  # .toarray()
+                                   -1 * main_dia,
+                                   close_dia[1:], dist_dia
+                                   ],
+                        offsets=[-1 * prop.ny, -1, 0, 1, prop.ny])  # .toarray()
     lapl *= prop.k * prop.d * prop.dy / prop.mu[ph] / prop.dx
     sigma *= prop.k * prop.d * prop.dy / prop.mu[ph] / prop.dx
     return lapl, sigma
@@ -150,14 +164,21 @@ def get_j_matrix(s, p, pos_r, ph, prop: Properties, j_matr):
     # return out.reshape((prop.nx * prop.ny, 1))
 
 
+def preprocess_p(p: ResState) -> np.ndarray:
+    return p.v / p.bound_v / 10.0
+
+
 class PetroEnv:
-    def __init__(self, p, s_o: ResState, s_w: ResState, prop: Properties, pos_r: dict, delta_p_well: float, max_time=90):
+    def __init__(self, p, s_o: ResState, s_w: ResState, prop: Properties, pos_r: dict, delta_p_well: float,
+                 max_time: float = 90., observation_kernel_size: int = None):
         self.max_time = max_time
         self.p_0 = p
         self.s_o_0 = s_o
         self.s_w_0 = s_w
         self.prop_0 = prop
         self.delta_p_well = delta_p_well
+
+        self.observation_kernel_size = observation_kernel_size
 
         self.times = []
         self.p = p
@@ -187,7 +208,7 @@ class PetroEnv:
         self.lapl_o = None
         self.dt_comp_sat = None
         self.lapl_w = None
-        self.openity = np.zeros(self.prop.nx * self.prop.ny)
+        self.openness = np.zeros(self.prop.nx * self.prop.ny)
         self.s_star = 0
         self.set_s_star()
 
@@ -206,14 +227,29 @@ class PetroEnv:
                 min_d = d
         self.s_star = _s_star
 
-    def prepro_s(self, s_o: ResState) -> np.ndarray:
+    def preprocess_s(self, s_o: ResState) -> np.ndarray:
         out = s_o.v - self.s_star
         out /= 0.5 - 0.2
         return out
 
-    def get_observation(self, s_o: ResState, p: ResState, prop: Properties):
-        s_o_sc = self.prepro_s(s_o)
-        return np.concatenate((s_o_sc, p.v / p.bound_v / 10.0), axis=None)
+    def extract_kernels(self, x: np.ndarray, pad: float) -> list:
+        x = x.reshape((self.prop.nx, self.prop.ny))
+        sub_matrices = []
+        for w_pos in self.pos_r:
+            x_sm = get_sub_matrix(x_=x, k_size=self.observation_kernel_size,
+                                  center=w_pos, pad=pad)
+            sub_matrices.append(x_sm)
+        return sub_matrices
+
+    def get_observation(self, s_o: ResState, p: ResState) -> np.ndarray:
+        s_o_sc = self.preprocess_s(s_o)
+        p_sc = preprocess_p(p)
+
+        obs_sub_matrices = []
+        obs_sub_matrices.extend(self.extract_kernels(s_o_sc, pad=s_o.bound_v))
+        obs_sub_matrices.extend(self.extract_kernels(p_sc, pad=p.bound_v))
+
+        return np.concatenate(obs_sub_matrices, axis=None)
 
     def step(self, action: np.ndarray = None) -> list:
         """
@@ -231,15 +267,15 @@ class PetroEnv:
         get_j_matrix(p=self.p, s=self.s_o, pos_r=self.pos_r, ph='o', prop=self.prop, j_matr=self.j_o)
         get_j_matrix(p=self.p, s=self.s_w, pos_r=self.pos_r, ph='w', prop=self.prop, j_matr=self.j_w)
         # wells are open not full-wide
-        self.openity = np.ones((self.prop.nx * self.prop.ny, 1))
+        self.openness = np.ones((self.prop.nx * self.prop.ny, 1))
         if action is not None:
             for _i, well in enumerate(self.pos_r):
-                self.openity[two_dim_index_to_one(well[0], well[1], self.prop.ny), 0] = action[_i]
-            self.j_o *= self.openity
-            self.j_w *= self.openity
+                self.openness[two_dim_index_to_one(well[0], well[1], self.prop.ny), 0] = action[_i]
+            self.j_o *= self.openness
+            self.j_w *= self.openness
         # now
-        self.lapl_w, self.si_w = get_lapl_one_ph_np(p=self.p, s=self.s_w, ph='w', prop=self.prop)
-        self.lapl_o, self.si_o = get_lapl_one_ph_np(p=self.p, s=self.s_o, ph='o', prop=self.prop)
+        self.lapl_w, self.si_w = get_laplace_one_ph_np(p=self.p, s=self.s_w, ph='w', prop=self.prop)
+        self.lapl_o, self.si_o = get_laplace_one_ph_np(p=self.p, s=self.s_o, ph='o', prop=self.prop)
 
         get_q_bound(self.p, self.s_w, 'w', self.prop, q_b=self.q_bound_w)
         get_q_bound(self.p, self.s_o, 'o', self.prop, q_b=self.q_bound_o)
@@ -254,7 +290,7 @@ class PetroEnv:
         b = self.prop.phi * self.dt_comp_sat * self.p.v + self.q_bound_w * self.prop.dt + self.q_bound_o * self.prop.dt
         b += (self.j_o * self.prop.b['o'] + self.j_w * self.prop.b['w']) * self.delta_p_vec * self.prop.dt
         # solve p
-        p_new = sp_linalg.spsolve(a, b).reshape((-1, 1))
+        p_new = sp_lin_alg.spsolve(a, b).reshape((-1, 1))
         # upd time stamp
 
         self.t += self.prop.dt / (60. * 60 * 24)
@@ -269,7 +305,7 @@ class PetroEnv:
         self.s_w = ResState(self.nxny_ones - self.s_o.v, self.s_w.bound_v, self.prop)
         self.p = ResState(p_new, self.prop.p_0, self.prop)
 
-        obs = self.get_observation(s_o=self.s_o, p=self.p, prop=self.prop)
+        obs = self.get_observation(s_o=self.s_o, p=self.p)
 
         return [obs, reward, self.t > self.max_time, {}]
 
@@ -279,7 +315,7 @@ class PetroEnv:
             out = ((-1) * self.j_o * self.delta_p_vec).reshape((self.prop.nx, self.prop.ny))
         elif ph == 'w':
             out = ((-1) * self.j_w * self.delta_p_vec).reshape((self.prop.nx, self.prop.ny))
-        return out * self.openity.reshape((self.prop.nx, self.prop.ny))
+        return out * self.openness.reshape((self.prop.nx, self.prop.ny))
 
     def get_reward(self):
         q_o = self.get_q('o')
@@ -312,8 +348,8 @@ class PetroEnv:
         self.lapl_o = None
         self.dt_comp_sat = None
         self.lapl_w = None
-        self.openity = np.zeros(self.prop.nx * self.prop.ny)
-        obs = self.get_observation(s_o=self.s_o, p=self.p, prop=self.prop)
+        self.openness = np.zeros(self.prop.nx * self.prop.ny)
+        obs = self.get_observation(s_o=self.s_o, p=self.p)
         return obs
 
     def get_q_act(self, ph: str, action: np.ndarray) -> np.ndarray:
