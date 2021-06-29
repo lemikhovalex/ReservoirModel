@@ -3,11 +3,30 @@ from .res_state import ResState, Properties
 import scipy.sparse as sparse
 
 
-def one_zero_swap(x):
+def one_zero_swap(x: int) -> int:
+    """
+    covering for transforming one to zero
+    Args:
+        x: int, 1 or 0
+
+    Returns: 0 or 1
+
+    """
     return 1 - x
 
 
 def get_ax_update(state: ResState, prop: Properties, axis: int) -> np.ndarray:
+    """
+    For making numerical schemes boundary values are mixed with inner, so this is a mixer
+    Args:
+        state: reservoir param, for example pressure or saturation
+        prop: properties of reservoir (only .nx, .ny are needed)
+        axis: if this is for x or y axis
+
+    Returns: cells with values are intersecting for fluid flow over specified axis are
+     in neighbouring cells
+
+    """
     if axis == 0:
         out_bound = np.ones((prop.nx, 1)) * state.bound_v
     elif axis == 1:
@@ -25,6 +44,18 @@ def get_ax_update(state: ResState, prop: Properties, axis: int) -> np.ndarray:
 
 
 def chose_sat_for_upd(p: np.ndarray, s: np.ndarray) -> np.ndarray:
+    """
+    Provided with values composed in the following way: if the fluid motion (along arbitrary axis)
+    is forced by difference in it values (pressures moves, difference in saturation stops moving)
+    the func chooses direction (by pressure) and selects main saturation value
+    Args:
+        p: vector of pressures, shuffeled in special (mentioned above) way
+        s: vector of saturation, shuffeled in special (mentioned above) way
+
+    Returns: array of saturation needed to calculate relative permeability
+    (cell with biggest pressure)
+
+    """
     comp_p_get_s = np.dtype({'names': ['p1', 'p2', 's1', 's2'],
                              'formats': [np.double,
                                          np.double,
@@ -42,6 +73,17 @@ def chose_sat_for_upd(p: np.ndarray, s: np.ndarray) -> np.ndarray:
 
 
 def build_main_diagonal(k_rel_x, k_rel_y, ph: str,  prop: Properties) -> np.ndarray:
+    """
+    builder of main diagonal for laplacian
+    Args:
+        k_rel_x: relative permeabilities for x-axis flow
+        k_rel_y: relative permeabilities for y-axis flow
+        ph: phase, 'o' or 'w' (oil or water)
+        prop: properties of reservoir
+
+    Returns: vecor wich is a diagonal
+
+    """
     main_dia = np.zeros(prop.nx * prop.ny)
     main_dia += np.delete(k_rel_x.reshape((prop.nx, prop.ny + 1)), obj=-1, axis=1).reshape(-1)
     main_dia += np.delete(k_rel_x.reshape((prop.nx, prop.ny + 1)), obj=0, axis=1).reshape(-1)
@@ -52,7 +94,17 @@ def build_main_diagonal(k_rel_x, k_rel_y, ph: str,  prop: Properties) -> np.ndar
     return main_dia
 
 
-def build_cloase_diag(k_rel_x, ph: str,  prop: Properties) -> np.ndarray:
+def build_close_diagonal(k_rel_x, ph: str, prop: Properties) -> np.ndarray:
+    """
+        builder of second diagonal (x -axis flow) for laplacian
+        Args:
+            k_rel_x: relative permeabilities for x-axis flow
+            ph: phase, 'o' or 'w' (oil or water)
+            prop: properties of reservoir
+
+        Returns: vector which is a second diagonal
+
+        """
     close_dia = k_rel_x.reshape((prop.nx, prop.ny + 1))
     close_dia = np.delete(close_dia, obj=-1, axis=1)
     close_dia = close_dia.reshape(-1)
@@ -61,7 +113,18 @@ def build_cloase_diag(k_rel_x, ph: str,  prop: Properties) -> np.ndarray:
     return close_dia
 
 
-def build_dist_dia(k_rel_y, ph, prop):
+def build_dist_diagonal(k_rel_y, ph, prop):
+    """
+        builder of the most distant (y-axis flow) diagonal for laplacian
+        Args:
+            k_rel_x: relative permeabilities for x-axis flow
+            k_rel_y: relative permeabilities for y-axis flow
+            ph: phase, 'o' or 'w' (oil or water)
+            prop: properties of reservoir
+
+        Returns: vector which is a diagonal
+
+        """
     dist_dia = k_rel_y.reshape((prop.ny, prop.nx + 1))
     dist_dia = np.delete(dist_dia, obj=-1, axis=1)
     dist_dia = np.delete(dist_dia, obj=0, axis=1)
@@ -101,8 +164,8 @@ def get_laplace_one_ph(p: ResState, s: ResState, ph: str, prop: Properties) -> [
     # main is first
     # for x we need to drop first and last col
     main_dia = build_main_diagonal(k_rel_x, k_rel_y, ph, prop)
-    close_dia = build_cloase_diag(k_rel_x, ph, prop)
-    dist_dia =build_dist_dia(k_rel_y, ph, prop)
+    close_dia = build_close_diagonal(k_rel_x, ph, prop)
+    dist_dia = build_dist_diagonal(k_rel_y, ph, prop)
 
     laplacian = sparse.diags(diagonals=[dist_dia, close_dia[1:],
                                         -1 * main_dia,
