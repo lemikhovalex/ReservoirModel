@@ -37,8 +37,8 @@ def get_sub_matrix(x: np.ndarray, k_size: int, center: tuple, pad_value: float) 
     """
     x_padded_ = np.pad(x, k_size // 2, pad_with, pad_value=pad_value)
     out = x_padded_[center[0]: center[0] + 2 * (k_size // 2) + 1,
-                    center[1]: center[1] + 2 * (k_size // 2) + 1
-                    ]
+          center[1]: center[1] + 2 * (k_size // 2) + 1
+          ]
     return out
 
 
@@ -299,17 +299,26 @@ class PetroEnv:
 
         obs_sub_matrices = []
         if self.observation_kernel_size > 0:
-            obs_sub_matrices.extend(self.extract_kernels(s_o_sc, pad_value=self.s_o.bound_v))
-            obs_sub_matrices.extend(self.extract_kernels(p_sc, pad_value=self.p.bound_v))
+            sat_out = np.stack(self.extract_kernels(s_o_sc, pad_value=self.s_o.bound_v),
+                               axis=2)
+            pre_out = np.stack(self.extract_kernels(p_sc, pad_value=self.p.bound_v),
+                               axis=2)
+            out = np.stack([sat_out, pre_out], axis=3)
         else:
-            obs_sub_matrices.extend(s_o_sc)
-            obs_sub_matrices.extend(p_sc)
+            sat_out = s_o_sc
+            pre_out = p_sc
+            out = np.stack([sat_out, pre_out], axis=1)
 
-        return np.concatenate(obs_sub_matrices, axis=None)
+        return out
 
     def step(self, action: np.ndarray = None) -> list:
         """
-        action is a np.ndarray with
+
+        Args:
+            action: itterable, earch value \in (0, 1), lengs equal to nuber of well
+
+        Returns:
+
         """
         if action is not None:
             assert len(self.pos_r) == len(action)  # wanna same wells
