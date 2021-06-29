@@ -9,7 +9,7 @@ from .utils import two_dim_index_to_one
 def pad_with(vector, pad_width, iaxis, kwargs):
     """
     hard function from https://numpy.org/doc/stable/reference/generated/numpy.pad.html
-    used to extract submatrix with padding
+    used to extract sub matrix with padding
     Args:
         vector: 2d array, matrix
         pad_width: size of pad
@@ -37,8 +37,8 @@ def get_sub_matrix(x: np.ndarray, k_size: int, center: tuple, pad_value: float) 
     """
     x_padded_ = np.pad(x, k_size // 2, pad_with, pad_value=pad_value)
     out = x_padded_[center[0]: center[0] + 2 * (k_size // 2) + 1,
-          center[1]: center[1] + 2 * (k_size // 2) + 1
-          ]
+                    center[1]: center[1] + 2 * (k_size // 2) + 1
+                    ]
     return out
 
 
@@ -297,7 +297,6 @@ class PetroEnv:
         s_o_sc = self.preprocess_s(self.s_o)
         p_sc = preprocess_p(self.p)
 
-        obs_sub_matrices = []
         if self.observation_kernel_size > 0:
             sat_out = np.stack(self.extract_kernels(s_o_sc, pad_value=self.s_o.bound_v),
                                axis=2)
@@ -309,15 +308,24 @@ class PetroEnv:
             pre_out = p_sc
             out = np.stack([sat_out, pre_out], axis=1)
 
-        return out
+        return out.reshape(-1, 1)
 
-    def step(self, action: np.ndarray = None) -> list:
+    def step(self, action: np.ndarray = None) -> [np.ndarray,
+                                                  float,
+                                                  bool,
+                                                  dict
+                                                  ]:
         """
 
         Args:
-            action: itterable, earch value \in (0, 1), lengs equal to nuber of well
+            action: iterable, each value in (0, 1), length equal to number of well
 
-        Returns:
+        Returns: list of 4:
+            next_state np.ndarray: it can be reshaped to (k_size, k_size, n_wells, 2).
+                where 2 is oil and pressure saturation
+            reward float: reward for particular action
+            is_done bool: if it is a terminate position
+            additional_info dict: some stuff for debug or insights, not learning
 
         """
         if action is not None:
