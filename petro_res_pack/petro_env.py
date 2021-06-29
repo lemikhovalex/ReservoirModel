@@ -308,7 +308,7 @@ class PetroEnv:
             pre_out = p_sc
             out = np.stack([sat_out, pre_out], axis=1)
 
-        return out.reshape(-1, 1)
+        return out.reshape(-1)
 
     def step(self, action: np.ndarray = None) -> [np.ndarray,
                                                   float,
