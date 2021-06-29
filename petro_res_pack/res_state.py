@@ -1,5 +1,5 @@
 from .properties import Properties
-from .utils import two_dim_index_to_one
+from .parsing_utils import two_dim_index_to_one
 
 
 class ResState:
