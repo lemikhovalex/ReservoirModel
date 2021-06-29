@@ -77,13 +77,15 @@ def preprocess_p(p: ResState) -> np.ndarray:
 
 class PetroEnv:
     def __init__(self, p, s_o: ResState, s_w: ResState, prop: Properties, pos_r: dict, delta_p_well: float,
-                 max_time: float = 90., observation_kernel_size: int = 0):
+                 max_time: float = 90., observation_kernel_size: int = 0, marge_4_preprocess: bool = False):
         self.max_time = max_time
         self.p_0 = p
         self.s_o_0 = s_o
         self.s_w_0 = s_w
         self.prop_0 = prop
         self.delta_p_well = delta_p_well
+
+        self.marge_4_preprocess = marge_4_preprocess
 
         self.observation_kernel_size = observation_kernel_size
 
@@ -145,6 +147,9 @@ class PetroEnv:
         """
         out = s_o.v - self.s_star
         out /= 0.5 - 0.2
+        if self.marge_4_preprocess:
+            out[out > 0] += 0.1
+            out[out < 0] -= 0.1
         return out
 
     def extract_kernels(self, x: np.ndarray, pad_value: float) -> list:
@@ -187,11 +192,7 @@ class PetroEnv:
 
         return out.reshape(-1)
 
-    def step(self, action: np.ndarray = None) -> [np.ndarray,
-                                                  float,
-                                                  bool,
-                                                  dict
-                                                  ]:
+    def step(self, action: np.ndarray = None) -> [np.ndarray, float, bool, dict]:
         """
 
         Args:
