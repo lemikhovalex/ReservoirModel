@@ -170,7 +170,7 @@ def preprocess_p(p: ResState) -> np.ndarray:
 
 class PetroEnv:
     def __init__(self, p, s_o: ResState, s_w: ResState, prop: Properties, pos_r: dict, delta_p_well: float,
-                 max_time: float = 90., observation_kernel_size: int = None):
+                 max_time: float = 90., observation_kernel_size: int = 0):
         self.max_time = max_time
         self.p_0 = p
         self.s_o_0 = s_o
@@ -246,8 +246,12 @@ class PetroEnv:
         p_sc = preprocess_p(p)
 
         obs_sub_matrices = []
-        obs_sub_matrices.extend(self.extract_kernels(s_o_sc, pad=s_o.bound_v))
-        obs_sub_matrices.extend(self.extract_kernels(p_sc, pad=p.bound_v))
+        if self.observation_kernel_size > 0:
+            obs_sub_matrices.extend(self.extract_kernels(s_o_sc, pad=s_o.bound_v))
+            obs_sub_matrices.extend(self.extract_kernels(p_sc, pad=p.bound_v))
+        else:
+            obs_sub_matrices.extend(s_o_sc)
+            obs_sub_matrices.extend(p_sc)
 
         return np.concatenate(obs_sub_matrices, axis=None)
 
