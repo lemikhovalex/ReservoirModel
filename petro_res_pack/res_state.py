@@ -1,6 +1,7 @@
 from .properties import Properties
 from .utils import two_dim_index_to_one
 
+
 class ResState:
     def __init__(self, values, bound_value, prop: Properties):
         self.v = values
