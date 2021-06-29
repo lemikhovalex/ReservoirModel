@@ -6,14 +6,36 @@ from .res_state import ResState
 from .utils import two_dim_index_to_one
 
 
-def pad_with(vector, pad_width, kwargs):
+def pad_with(vector, pad_width, iaxis, kwargs):
+    """
+    hard function from https://numpy.org/doc/stable/reference/generated/numpy.pad.html
+    used to extract submatrix with padding
+    Args:
+        vector: 2d array, matrix
+        pad_width: size of pad
+        iaxis: dull, need for integration to np
+        kwargs: must include "pad_value"
+
+    Returns: nothing, inplace operator
+
+    """
     pad_value = kwargs.get('pad_value', 10)
     vector[:pad_width[0]] = pad_value
     vector[-pad_width[1]:] = pad_value
 
 
-def get_sub_matrix(x_, k_size, center, pad):
-    x_padded_ = np.pad(x_, k_size // 2, pad_with, pad_value=pad)
+def get_sub_matrix(x: np.ndarray, k_size: int, center: tuple, pad_value: float) -> np.ndarray:
+    """
+    reci
+    Args:
+        x: 2d matrix, fro which the sub matrix will be extracted
+        k_size: size of square sub matrix
+        center: center of matrix, where from the sub matrix will be taken
+        pad_value: taking sub matrix of fixed size must be defined for close to frontier positions.
+                   values that are not in matrix, but required by indexing - padding
+    Returns: 2d sub matrix
+    """
+    x_padded_ = np.pad(x, k_size // 2, pad_with, pad_value=pad_value)
     out = x_padded_[center[0]: center[0] + 2 * (k_size // 2) + 1,
                     center[1]: center[1] + 2 * (k_size // 2) + 1
                     ]
@@ -165,6 +187,14 @@ def get_j_matrix(s, p, pos_r, ph, prop: Properties, j_matr):
 
 
 def preprocess_p(p: ResState) -> np.ndarray:
+    """
+    function, processes pressure
+    Args:
+        p: 1d array with pressures
+
+    Returns: the same vector, but scaled
+
+    """
     return p.v / p.bound_v / 10.0
 
 
@@ -228,27 +258,49 @@ class PetroEnv:
         self.s_star = _s_star
 
     def preprocess_s(self, s_o: ResState) -> np.ndarray:
+        """
+        normalizing saturation values. centered to values - zero benefit saturation. scaling - by 0.3
+        Args:
+            s_o: vector with saturation
+
+        Returns: the same vector, but scaled
+
+        """
         out = s_o.v - self.s_star
         out /= 0.5 - 0.2
         return out
 
-    def extract_kernels(self, x: np.ndarray, pad: float) -> list:
+    def extract_kernels(self, x: np.ndarray, pad_value: float) -> list:
+        """
+        Extract list of sub matrixes, placed in well positions
+        Args:
+            x: 1d array, as ResState.values
+            pad_value: value for padding
+
+        Returns: list of square sub matrices
+
+        """
         x = x.reshape((self.prop.nx, self.prop.ny))
         sub_matrices = []
         for w_pos in self.pos_r:
-            x_sm = get_sub_matrix(x_=x, k_size=self.observation_kernel_size,
-                                  center=w_pos, pad=pad)
+            x_sm = get_sub_matrix(x=x, k_size=self.observation_kernel_size,
+                                  center=w_pos, pad_value=pad_value)
             sub_matrices.append(x_sm)
         return sub_matrices
 
-    def get_observation(self, s_o: ResState, p: ResState) -> np.ndarray:
-        s_o_sc = self.preprocess_s(s_o)
-        p_sc = preprocess_p(p)
+    def get_observation(self) -> np.ndarray:
+        """
+        Process env state and returns it as vector
+        Returns: env state as 1d array
+
+        """
+        s_o_sc = self.preprocess_s(self.s_o)
+        p_sc = preprocess_p(self.p)
 
         obs_sub_matrices = []
         if self.observation_kernel_size > 0:
-            obs_sub_matrices.extend(self.extract_kernels(s_o_sc, pad=s_o.bound_v))
-            obs_sub_matrices.extend(self.extract_kernels(p_sc, pad=p.bound_v))
+            obs_sub_matrices.extend(self.extract_kernels(s_o_sc, pad_value=self.s_o.bound_v))
+            obs_sub_matrices.extend(self.extract_kernels(p_sc, pad_value=self.p.bound_v))
         else:
             obs_sub_matrices.extend(s_o_sc)
             obs_sub_matrices.extend(p_sc)
@@ -309,7 +361,7 @@ class PetroEnv:
         self.s_w = ResState(self.nxny_ones - self.s_o.v, self.s_w.bound_v, self.prop)
         self.p = ResState(p_new, self.prop.p_0, self.prop)
 
-        obs = self.get_observation(s_o=self.s_o, p=self.p)
+        obs = self.get_observation()
 
         return [obs, reward, self.t > self.max_time, {}]
 
@@ -353,7 +405,7 @@ class PetroEnv:
         self.dt_comp_sat = None
         self.lapl_w = None
         self.openness = np.zeros(self.prop.nx * self.prop.ny)
-        obs = self.get_observation(s_o=self.s_o, p=self.p)
+        obs = self.get_observation()
         return obs
 
     def get_q_act(self, ph: str, action: np.ndarray) -> np.ndarray:
