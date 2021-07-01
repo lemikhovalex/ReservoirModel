@@ -57,7 +57,7 @@ class Session:
                 out = True
         return out
 
-    def run(self, policy=None, openity_states=5, obs_trans_func=id_tr, save=False, path=None):
+    def run(self, policy=None, openity_states=5, obs_trans_func=id_tr, stoch=False, save=False, path=None):
 
         self.__init__(env=self.env, n_iter=self.n_iter, plot_freq=self.plot_freq)
         n_wells = len(self.env.pos_r)
@@ -80,7 +80,7 @@ class Session:
 
             with torch.no_grad():
                 if policy is not None:
-                    action = policy.sample_actions(state)[0]
+                    action = policy.sample_actions(state, stoch=stoch)[0]
                     action = policy.act_to_openness(action)
                     if type(action) == torch.tensor:
                         action = action.numpy()
