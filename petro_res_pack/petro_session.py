@@ -2,7 +2,6 @@
 from IPython import display
 import matplotlib.pyplot as plt
 import seaborn as sns
-import torch.nn.functional as F
 import torch
 import numpy as np
 import pandas as pd
