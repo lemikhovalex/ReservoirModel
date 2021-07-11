@@ -1,12 +1,15 @@
 numpy~=1.19.5
 matplotlib~=3.3.2
 seaborn~=0.11.0
-ipython
+ipython~=7.16.1
 pandas~=1.1.0
 scikit-learn~=0.23.2
-scipy
-gym
+scipy~=1.5.4
+gym~=0.18.3
 setuptools~=41.2.0
 --find-links https://download.pytorch.org/whl/torch_stable.html
 
-torch==1.8.1+cpu
+torch~=1.7.1+cpu
+
+sklearn~=0.0
+pyglet
