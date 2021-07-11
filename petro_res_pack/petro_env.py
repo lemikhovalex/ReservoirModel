@@ -1,6 +1,7 @@
 import numpy as np
 import scipy.sparse as sparse
 import scipy.sparse.linalg as sp_lin_alg
+from gym import Env
 
 from .properties import Properties
 from .res_state import ResState
@@ -75,7 +76,10 @@ def preprocess_p(p: ResState) -> np.ndarray:
     return p.v / p.bound_v / 10.0
 
 
-class PetroEnv:
+class PetroEnv(Env):
+    def render(self, mode='human'):
+        pass
+
     def __init__(self, p, s_o: ResState, s_w: ResState, prop: Properties, pos_r: dict, delta_p_well: float,
                  max_time: float = 90., observation_kernel_size: int = 0, marge_4_preprocess: bool = False):
         self.max_time = max_time
@@ -173,7 +177,9 @@ class PetroEnv:
     def get_observation(self) -> np.ndarray:
         """
         Process env state and returns it as vector
-        Returns: env state as 1d array
+        Returns: env state as 1d array OR, if there is kernel,
+                 it can be reshaped to (k_size, k_size, n_wells, 2).
+                 where 2 is oil and pressure saturation
 
         """
         s_o_sc = self.preprocess_s(self.s_o)
@@ -318,6 +324,25 @@ class PetroEnv:
             out = ((-1) * j_w * self.delta_p_vec).reshape((self.prop.nx, self.prop.ny))
         return out * openness.reshape((self.prop.nx, self.prop.ny))
 
+    def evaluate_wells(self, action: np.ndarray = None) -> np.ndarray:
+        """
+        the environment is associated with state. So this function estimates reward for given action
+        Args:
+            action: numpy array with openness of each well
+        Returns: reward for each well as vector
+        """
+        if action is None:
+            action = np.ones(len(self.pos_r))
+
+        q_o = self.get_q_act('o', action)
+        q_w = self.get_q_act('w', action)
+
+        whole_out = (self.price['o'] * q_o - self.price['w'] * q_w) * self.prop.dt
+        out = np.zeros(len(self.pos_r))
+        for _i, w_pos in enumerate(self.pos_r):
+            out[_i] = whole_out[w_pos]
+        return out
+
     def evaluate_action(self, action: np.ndarray = None) -> float:
         """
         the environment is associated with state. So this function estimates reward for given action
@@ -326,13 +351,8 @@ class PetroEnv:
 
         Returns: reward as float
         """
-
-        if action is None:
-            action = np.ones(len(self.pos_r))
-
-        q_o = self.get_q_act('o', action)
-        q_w = self.get_q_act('w', action)
-        return (self.price['o'] * q_o.sum() - self.price['w'] * q_w.sum()) * self.prop.dt
+        well_rewards = self.evaluate_wells(action)
+        return well_rewards.sum()
 
     def evaluate_strategy(self, strategy='max_reward_for_each_time_step') -> float:
         out = 0
