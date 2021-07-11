@@ -80,7 +80,9 @@ class Session:
 
             with torch.no_grad():
                 if policy is not None:
-                    action = policy.sample_actions(state, stoch=stoch)[0]
+                    action = policy.sample_actions(state, stoch=stoch)
+                    if action.shape[0] == 1:
+                        action = action[0]
                     action = policy.act_to_openness(action)
                     if type(action) == torch.tensor:
                         action = action.numpy()
