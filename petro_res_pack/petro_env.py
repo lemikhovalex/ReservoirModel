@@ -2,6 +2,13 @@ import numpy as np
 import scipy.sparse as sparse
 import scipy.sparse.linalg as sp_lin_alg
 from gym import Env
+from gym.envs.classic_control.rendering import SimpleImageViewer
+
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
+import seaborn as sns
+
+import pandas as pd
 
 from .properties import Properties
 from .res_state import ResState
@@ -77,8 +84,59 @@ def preprocess_p(p: ResState) -> np.ndarray:
 
 
 class PetroEnv(Env):
+
+    def _get_image(self, mode='human') -> np.ndarray:
+        if mode == 'human':
+            f, ax = plt.subplots(nrows=2, ncols=2, figsize=(16, 12))
+            f.tight_layout(pad=6.0)
+
+            nx, ny = self.prop.nx, self.prop.ny
+            xs = np.linspace(0, self.prop.dx * (nx - 1), nx)
+            ys = np.linspace(0, self.prop.dy * (ny - 1), ny)
+
+            label_font_size = 16
+            title_font_size = 16
+            x_tick_size = 14
+
+            df = pd.DataFrame(self.p.v.reshape((nx, ny)) / 6894., columns=xs, index=ys)
+            sns.heatmap(df, ax=ax[0][0], cbar=True)
+            ax[0][0].set_title(f'Pressure, psi\nt={self.t: .1f} days', fontsize=title_font_size)
+            ax[0][0].set_xlabel('y, m', fontsize=label_font_size)
+            ax[0][0].set_ylabel('x, m', fontsize=label_font_size)
+            ax[0][0].tick_params(axis='x', labelsize=x_tick_size)
+            ax[0][0].tick_params(axis='y', labelsize=x_tick_size)
+
+            df = pd.DataFrame(self.s_o.v.reshape((nx, ny)), columns=xs, index=ys)
+            sns.heatmap(df, ax=ax[0][1],
+                        cbar=True, fmt=".2f")
+            ax[0][1].set_title(f'Saturation, oil\nt={self.t: .1f} days', fontsize=title_font_size)
+            ax[0][1].set_xlabel('y, m', fontsize=label_font_size)
+            ax[0][1].set_ylabel('x, m', fontsize=label_font_size)
+            ax[0][1].tick_params(axis='x', labelsize=x_tick_size)
+            ax[0][1].tick_params(axis='y', labelsize=x_tick_size)
+
+            ax[1][0].bar([str(w) for w in self.pos_r], self._last_action)
+            ax[1][0].set_ylim((0, 1))
+
+            ax[1][1].bar([str(w) for w in self.pos_r], self.evaluate_wells(self._last_action))
+            ax[1][1].set_ylim((0, 1))
+            plt.close()
+
+            canvas = FigureCanvas(f)
+
+            canvas.draw()  # draw the canvas, cache the renderer
+            w, h = canvas.get_width_height()
+            image = np.frombuffer(canvas.tostring_rgb(), dtype='uint8').reshape(h, w, 3)
+
+            return image
+
     def render(self, mode='human'):
-        pass
+        img = self._get_image(mode=mode)
+        if mode == 'human':
+            if self.viewer is None:
+                self.viewer = SimpleImageViewer()
+            self.viewer.imshow(img)
+            return self.viewer.is_open
 
     def __init__(self, p, s_o: ResState, s_w: ResState, prop: Properties, pos_r: dict, delta_p_well: float,
                  max_time: float = 90., observation_kernel_size: int = 0, marge_4_preprocess: bool = False):
@@ -127,6 +185,9 @@ class PetroEnv(Env):
 
         self.si_o = None
         self.si_w = None
+
+        self.viewer = None
+        self._last_action = np.ones(len(self.pos_r))
 
     def set_s_star(self):
         min_d = 100
@@ -225,7 +286,9 @@ class PetroEnv(Env):
         get_j_matrix(p=self.p, s=self.s_w, pos_r=self.pos_r, ph='w', prop=self.prop, j_matrix=self.j_w)
         # wells are open not full-wide
         self.openness = np.ones((self.prop.nx * self.prop.ny, 1))
+        self._last_action = np.ones(len(self.pos_r))
         if action is not None:
+            self._last_action = action
             for _i, well in enumerate(self.pos_r):
                 self.openness[two_dim_index_to_one(well[0], well[1], self.prop.ny), 0] = action[_i]
             self.j_o *= self.openness
