@@ -26,6 +26,20 @@ def get_ax_update(state: ResState, prop: Properties, axis: int) -> np.ndarray:
     Returns: cells with values are intersecting for fluid flow over specified axis are
      in neighbouring cells
 
+     for example having
+     [[0, 1, 2, 3],
+      [3, 4, 5]]
+      as pressure vector. and -1 is boundary value
+      then full picture is
+      [[-1, -1, -1, -1, -1],
+       [-1,  0,  1,  2, -1]
+       [-1,  3,  4,  5, -1]
+       [-1, -1, -1, -1, -1]]
+    and values for update along 0-axis are just sequence of boarding elements along 0-axis
+    [-1,  0,  1,  2, -1,  3,  4,  5, -1]
+    just every REAL element is surrounded by its neighbours (not real too)
+    same stuff for 1-axis
+    [-1,  0,  3, -1,  1,  4, -1,  2,  5, -1]
     """
     if axis == 0:
         out_bound = np.ones((prop.nx, 1)) * state.bound_v
