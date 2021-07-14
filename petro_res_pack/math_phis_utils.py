@@ -167,7 +167,7 @@ def get_laplace_one_ph(p: ResState, s: ResState, ph: str, prop: Properties) -> [
     p_x_ext = get_ax_update(p, prop, axis=0)
     sat_x = chose_sat_for_upd(p=p_x_ext, s=s_x_ext)
 
-    k_rel_x = prop.k_rel_ph_1val_np(sat_x, ph)
+    k_rel_x = prop.k_rel_by_ph(sat_x, ph)
     sigma = k_rel_x.max()
     ##############################################
 
@@ -175,7 +175,7 @@ def get_laplace_one_ph(p: ResState, s: ResState, ph: str, prop: Properties) -> [
     p_y_ext = get_ax_update(p, prop, axis=1)
     sat_y = chose_sat_for_upd(p=p_y_ext, s=s_y_ext)
 
-    k_rel_y = prop.k_rel_ph_1val_np(sat_y, ph)
+    k_rel_y = prop.k_rel_by_ph(sat_y, ph)
     sigma = min(sigma, k_rel_y.max())
 
     # let's go diagonals
