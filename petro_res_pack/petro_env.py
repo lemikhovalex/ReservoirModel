@@ -21,29 +21,29 @@ def get_q_bound(p: ResState, s, ph, prop: Properties, q_b):
     q_b *= 0
     for row in range(prop.nx):
         # (row, -0.5)
-        k_r = prop.k_rel_ph_local_pressure_decision(s_1=s[row, -1], s_2=s[row, 0],
-                                                    p_1=p[row, -1], p_2=p[row, 0],
+        k_r = prop.k_rel_ph_local_pressure_decision(s_1=s[row, -0.5], s_2=s[row, 0],
+                                                    p_1=p[row, -0.5], p_2=p[row, 0],
                                                     ph=ph)
 
         dia_ = two_dim_index_to_one(i=row, j=0, ny=prop.ny)
         q_b[dia_, 0] += prop.k * k_r / prop.dx * p[row, -0.5] * prop.d * prop.dy / prop.mu[ph]
         # (row, ny-0.5)
-        k_r = prop.k_rel_ph_local_pressure_decision(s_1=s[row, prop.ny - 1], s_2=s[row, prop.ny],
-                                                    p_1=p[row, prop.ny - 1], p_2=p[row, prop.ny],
+        k_r = prop.k_rel_ph_local_pressure_decision(s_1=s[row, prop.ny - 1], s_2=s[row, prop.ny - 0.5],
+                                                    p_1=p[row, prop.ny - 1], p_2=p[row, prop.ny - 0.5],
                                                     ph=ph)
         dia_ = two_dim_index_to_one(i=row, j=prop.ny - 1, ny=prop.ny)
         q_b[dia_, 0] += prop.k * k_r / prop.dx * p[row, prop.ny - 0.5] * prop.d * prop.dy / prop.mu[ph]
 
     for col in range(prop.ny):
         # (-0.5, col)
-        k_r = prop.k_rel_ph_local_pressure_decision(s_1=s[-1, col], s_2=s[0, col],
-                                                    p_1=p[-1, col], p_2=p[0, col],
+        k_r = prop.k_rel_ph_local_pressure_decision(s_1=s[-0.5, col], s_2=s[0, col],
+                                                    p_1=p[-0.5, col], p_2=p[0, col],
                                                     ph=ph)
         dia_ = two_dim_index_to_one(i=0, j=col, ny=prop.ny)
-        q_b[dia_, 0] += prop.k * k_r / prop.dx * p[-0.5, col] * prop.d * prop.dy / prop.mu[ph]
+        q_b[dia_, 0] += prop.k * k_r / prop.dx * p[prop.nx - 0.5, col] * prop.d * prop.dy / prop.mu[ph]
         # (nx-0.5, col)
-        k_r = prop.k_rel_ph_local_pressure_decision(s_1=s[prop.nx - 1, col], s_2=s[prop.nx, col],
-                                                    p_1=p[prop.nx - 1, col], p_2=p[prop.nx, col],
+        k_r = prop.k_rel_ph_local_pressure_decision(s_1=s[prop.nx - 1, col], s_2=s[prop.nx - 0.5, col],
+                                                    p_1=p[prop.nx - 1, col], p_2=p[prop.nx - 0.5, col],
                                                     ph=ph)
         dia_ = two_dim_index_to_one(i=prop.nx - 1, j=col, ny=prop.ny)
         q_b[dia_, 0] += prop.k * k_r / prop.dx * p[prop.nx - 0.5, col] * prop.d * prop.dy / prop.mu[ph]
