@@ -59,12 +59,17 @@ def get_ax_update(state: ResState, prop: Properties, axis: int) -> np.ndarray:
 
 def chose_sat_for_upd(p: np.ndarray, s: np.ndarray) -> np.ndarray:
     """
-    Provided with values composed in the following way: if the fluid motion (along arbitrary axis)
+    Provided with values composed in the following way: the fluid motion (along arbitrary axis)
     is forced by difference in it values (pressures moves, difference in saturation stops moving)
-    the func chooses direction (by pressure) and selects main saturation value
+    the func chooses direction (by pressure) and selects main saturation value, which is cell with greater pressure.
+    arguments are 1d vectors, just like
+    p =   [4,  5,  1,  8, -1, 17, 25,  9,  0]
+    s =   [1,  2,  3,  4,  5,  6,  7,  8,  9]
+    so main saturation, which defines relative permeability is
+    s_main = [2,  2,  4,  4,  6,  7,  7,  8]
     Args:
-        p: vector of pressures, shuffeled in special (mentioned above) way
-        s: vector of saturation, shuffeled in special (mentioned above) way
+        p: vector of pressures, shuffled in special (mentioned above) way
+        s: vector of saturation, shuffled in special (mentioned above) way
 
     Returns: array of saturation needed to calculate relative permeability
     (cell with biggest pressure)
@@ -131,7 +136,6 @@ def build_dist_diagonal(k_rel_y, ph, prop):
     """
         builder of the most distant (y-axis flow) diagonal for laplacian
         Args:
-            k_rel_x: relative permeabilities for x-axis flow
             k_rel_y: relative permeabilities for y-axis flow
             ph: phase, 'o' or 'w' (oil or water)
             prop: properties of reservoir
