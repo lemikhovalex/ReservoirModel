@@ -21,30 +21,30 @@ def get_q_bound(p: ResState, s, ph, prop: Properties, q_b):
     q_b *= 0
     for row in range(prop.nx):
         # (row, -0.5)
-        k_r = prop.k_rel_ph(s_1=s[row, -1], s_2=s[row, 0],
-                            p_1=p[row, -1], p_2=p[row, 0],
-                            ph=ph)
+        k_r = prop.k_rel_ph_local_pressure_decision(s_1=s[row, -1], s_2=s[row, 0],
+                                                    p_1=p[row, -1], p_2=p[row, 0],
+                                                    ph=ph)
 
         dia_ = two_dim_index_to_one(i=row, j=0, ny=prop.ny)
         q_b[dia_, 0] += prop.k * k_r / prop.dx * p[row, -0.5] * prop.d * prop.dy / prop.mu[ph]
         # (row, ny-0.5)
-        k_r = prop.k_rel_ph(s_1=s[row, prop.ny - 1], s_2=s[row, prop.ny],
-                            p_1=p[row, prop.ny - 1], p_2=p[row, prop.ny],
-                            ph=ph)
+        k_r = prop.k_rel_ph_local_pressure_decision(s_1=s[row, prop.ny - 1], s_2=s[row, prop.ny],
+                                                    p_1=p[row, prop.ny - 1], p_2=p[row, prop.ny],
+                                                    ph=ph)
         dia_ = two_dim_index_to_one(i=row, j=prop.ny - 1, ny=prop.ny)
         q_b[dia_, 0] += prop.k * k_r / prop.dx * p[row, prop.ny - 0.5] * prop.d * prop.dy / prop.mu[ph]
 
     for col in range(prop.ny):
         # (-0.5, col)
-        k_r = prop.k_rel_ph(s_1=s[-1, col], s_2=s[0, col],
-                            p_1=p[-1, col], p_2=p[0, col],
-                            ph=ph)
+        k_r = prop.k_rel_ph_local_pressure_decision(s_1=s[-1, col], s_2=s[0, col],
+                                                    p_1=p[-1, col], p_2=p[0, col],
+                                                    ph=ph)
         dia_ = two_dim_index_to_one(i=0, j=col, ny=prop.ny)
         q_b[dia_, 0] += prop.k * k_r / prop.dx * p[-0.5, col] * prop.d * prop.dy / prop.mu[ph]
         # (nx-0.5, col)
-        k_r = prop.k_rel_ph(s_1=s[prop.nx - 1, col], s_2=s[prop.nx, col],
-                            p_1=p[prop.nx - 1, col], p_2=p[prop.nx, col],
-                            ph=ph)
+        k_r = prop.k_rel_ph_local_pressure_decision(s_1=s[prop.nx - 1, col], s_2=s[prop.nx, col],
+                                                    p_1=p[prop.nx - 1, col], p_2=p[prop.nx, col],
+                                                    ph=ph)
         dia_ = two_dim_index_to_one(i=prop.nx - 1, j=col, ny=prop.ny)
         q_b[dia_, 0] += prop.k * k_r / prop.dx * p[prop.nx - 0.5, col] * prop.d * prop.dy / prop.mu[ph]
         # corners to zero
@@ -63,9 +63,9 @@ def get_j_matrix(s, p, pos_r, ph, prop: Properties, j_matrix):
         _p *= r_ref * pos_r[pos]
         _p /= (r_ref - pos_r[pos])
 
-        _p *= prop.k_rel_ph(s_1=s[pos[0], pos[1]], s_2=s[pos[0], pos[1]],
-                            p_1=p[pos[0], pos[1]], p_2=p[pos[0], pos[1]],
-                            ph=ph)
+        _p *= prop.k_rel_ph_local_pressure_decision(s_1=s[pos[0], pos[1]], s_2=s[pos[0], pos[1]],
+                                                    p_1=p[pos[0], pos[1]], p_2=p[pos[0], pos[1]],
+                                                    ph=ph)
 
         j_matrix[dia_pos] = _p
     # return out.reshape((prop.nx * prop.ny, 1))
@@ -193,8 +193,8 @@ class PetroEnv(Env):
         min_d = 100
         _s_star = 1
         for ss in np.linspace(0, 1, 20000):
-            w_ben = self.price['w'] * self.prop.k_rel_w(1 - ss) / self.prop.mu['w']
-            o_ben = self.price['o'] * self.prop.k_rel_o(ss) / self.prop.mu['o']
+            w_ben = self.price['w'] * self.prop.k_rel_by_ph(1 - ss, 'o') / self.prop.mu['w']
+            o_ben = self.price['o'] * self.prop.k_rel_by_ph(ss, 'w') / self.prop.mu['o']
             d = abs(w_ben - o_ben)
             if d < min_d:
                 _s_star = ss
