@@ -3,14 +3,51 @@ from typing import Union
 
 
 class Properties:
-    def __init__(self, nx=25, ny=25, k=1e-1 * 1.987e-13, dx=3, dy=3, phi=0.4, p_0=150 * 10 ** 5, d=10, dt=24316,
-                 s_0=0.4, c_w=1e-6, c_o=1e-6, c_r=3e-6, mu_w=1 / 1000., mu_o=15 / 1000., b_o=1., b_w=1., l_w=2., l_o=2.,
-                 s_wir=0.2, s_wor=0.8, k_rwr=0.1, k_rot=1., e_w=1., e_o=1., t_w=2., t_o=2.
+
+    def __init__(self, nx: int = 25, ny: int = 25, k: float = 1e-1 * 1.987e-13, dx: float = 3, dy: float = 3,
+                 phi: float = 0.4, p_0: float = 150 * 10 ** 5, d: float = 10, dt: float = 24316,
+                 s_0: float = 0.4, c_w: float = 1e-6, c_o: float = 1e-6, c_r: float = 3e-6, mu_w: float = 1 / 1000.,
+                 mu_o: float = 15 / 1000., b_o: float = 1., b_w: float = 1., l_w: float = 2., l_o: float = 2.,
+                 s_wir: float = 0.2, s_wor: float = 0.8, k_rwr: float = 0.1, k_rot: float = 1., e_w: float = 1.,
+                 e_o: float = 1., t_w: float = 2., t_o: float = 2.
                  ):
-        # res propetis
+        """
+        This class stores reservoir properties and calculates relative permeability
+        All values in metric system! No psi, darcy ect
+        Args:
+            nx: number of x-axis cells
+            ny: number of y-axis cells
+            k: absolute permeability
+            dx: size of cell (x and y axis)
+            dy: must be equal to dx
+            phi: porosity of reservoir
+            p_0: initial pressure, same for all cells
+            d: depth in meters
+            dt: time step, seconds
+            s_0: initial oil saturation
+            c_w: compressibility of water
+            c_o: compressibility of oil
+            c_r: compressibility of rock
+            mu_w: viscosity of water
+            mu_o: viscosity of oil
+            b_o: oil volume below / oil volume above
+            b_w: water volume below / water volume above
+            l_w: parameter from https://en.wikipedia.org/wiki/Relative_permeability#LET-model
+            l_o: parameter from https://en.wikipedia.org/wiki/Relative_permeability#LET-model
+            s_wir: parameter from https://en.wikipedia.org/wiki/Relative_permeability#LET-model
+            s_wor: parameter from https://en.wikipedia.org/wiki/Relative_permeability#LET-model
+            k_rwr: parameter from https://en.wikipedia.org/wiki/Relative_permeability#LET-model
+            k_rot: parameter from https://en.wikipedia.org/wiki/Relative_permeability#LET-model
+            e_w: parameter from https://en.wikipedia.org/wiki/Relative_permeability#LET-model
+            e_o: parameter from https://en.wikipedia.org/wiki/Relative_permeability#LET-model
+            t_w: parameter from https://en.wikipedia.org/wiki/Relative_permeability#LET-model
+            t_o: parameter from https://en.wikipedia.org/wiki/Relative_permeability#LET-model
+        """
         self.nx = nx
         self.ny = ny
         self.k = k
+        if dx != dy:
+            raise ResourceWarning('dx and dy params must be equal! set both to dx')
         self.dx = dx
         self.dy = dy
         self.phi = phi
@@ -32,11 +69,20 @@ class Properties:
         self.e_o = e_o
         self.t_w = t_w
         self.t_o = t_o
-        self.mask_close = np.ones(nx*ny)
+        self.mask_close = np.ones(nx * ny)
         for i in range(nx):
             self.mask_close[ny * i] = 0
 
-    def __get_s_wn(self, s_w):
+    def __get_s_wn(self, s_w: Union[float, np.ndarray]):
+        """
+        calculates parameter for relative permeability
+        https://en.wikipedia.org/wiki/Relative_permeability#LET-model
+        Args:
+            s_w: water saturation
+
+        Returns:
+
+        """
         s_wn = (s_w - self.s_wir) / (self.s_wor - self.s_wir)
         if isinstance(s_wn, float) or isinstance(s_wn, int):
             if s_wn < 0:
