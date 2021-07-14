@@ -3,18 +3,19 @@ from typing import Union
 
 
 class Properties:
+    """Exceptions are documented in the same way as classes.
 
-    def __init__(self, nx: int = 25, ny: int = 25, k: float = 1e-1 * 1.987e-13, dx: float = 3, dy: float = 3,
-                 phi: float = 0.4, p_0: float = 150 * 10 ** 5, d: float = 10, dt: float = 24316,
-                 s_0: float = 0.4, c_w: float = 1e-6, c_o: float = 1e-6, c_r: float = 3e-6, mu_w: float = 1 / 1000.,
-                 mu_o: float = 15 / 1000., b_o: float = 1., b_w: float = 1., l_w: float = 2., l_o: float = 2.,
-                 s_wir: float = 0.2, s_wor: float = 0.8, k_rwr: float = 0.1, k_rot: float = 1., e_w: float = 1.,
-                 e_o: float = 1., t_w: float = 2., t_o: float = 2.
-                 ):
-        """
-        This class stores reservoir properties and calculates relative permeability
-        All values in metric system! No psi, darcy ect
+        The __init__ method may be documented in either the class level
+        docstring, or as a docstring on the __init__ method itself.
+
+        Either form is acceptable, but the two should not be mixed. Choose one
+        convention to document the __init__ method and be consistent with it.
+
+        Note:
+            Do not include the `self` parameter in the ``Args`` section.
+
         Args:
+            Args:
             nx: number of x-axis cells
             ny: number of y-axis cells
             k: absolute permeability
@@ -42,6 +43,18 @@ class Properties:
             e_o: parameter from https://en.wikipedia.org/wiki/Relative_permeability#LET-model
             t_w: parameter from https://en.wikipedia.org/wiki/Relative_permeability#LET-model
             t_o: parameter from https://en.wikipedia.org/wiki/Relative_permeability#LET-model
+        """
+    def __init__(self, nx: int = 25, ny: int = 25, k: float = 1e-1 * 1.987e-13, dx: float = 3, dy: float = 3,
+                 phi: float = 0.4, p_0: float = 150 * 10 ** 5, d: float = 10, dt: float = 24316,
+                 s_0: float = 0.4, c_w: float = 1e-6, c_o: float = 1e-6, c_r: float = 3e-6, mu_w: float = 1 / 1000.,
+                 mu_o: float = 15 / 1000., b_o: float = 1., b_w: float = 1., l_w: float = 2., l_o: float = 2.,
+                 s_wir: float = 0.2, s_wor: float = 0.8, k_rwr: float = 0.1, k_rot: float = 1., e_w: float = 1.,
+                 e_o: float = 1., t_w: float = 2., t_o: float = 2.
+                 ):
+        """
+        This class stores reservoir properties and calculates relative permeability
+        All values in metric system! No psi, darcy ect
+
         """
         self.nx = nx
         self.ny = ny
