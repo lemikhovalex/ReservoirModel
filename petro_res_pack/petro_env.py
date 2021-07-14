@@ -13,7 +13,7 @@ import pandas as pd
 from .properties import Properties
 from .res_state import ResState
 from .parsing_utils import two_dim_index_to_one
-from .sub_matices_utils import get_sub_matrix
+from .sub_matrices_utils import get_sub_matrix
 from .math_phis_utils import get_laplace_one_ph
 
 

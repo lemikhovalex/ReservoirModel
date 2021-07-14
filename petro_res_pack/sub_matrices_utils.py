@@ -30,6 +30,9 @@ def get_sub_matrix(x: np.ndarray, k_size: int, center: tuple, pad_value: float) 
                    values that are not in matrix, but required by indexing - padding
     Returns: 2d sub matrix
     """
+    for ax in [0, 1]:
+        if (center[ax] < 0) | (center[ax] > x.shape[ax] - 1):
+            raise IndexError(f'center out of reservoir by axis {ax}')
     x_padded_ = np.pad(x, k_size // 2, pad_with, pad_value=pad_value)
     out = x_padded_[center[0]: center[0] + 2 * (k_size // 2) + 1,
                     center[1]: center[1] + 2 * (k_size // 2) + 1
