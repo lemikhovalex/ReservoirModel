@@ -57,7 +57,7 @@ class TestKRelPh(TestCase):
     def test_k_rel_by_ph_4(self):
         try:
             _ = self.prop.k_rel_by_ph(s=1, ph='ggg')
-            self.assertTrue(True, msg='Passed wrong ard')
+            self.assertTrue(False, msg='Passed wrong ard')
         except ValueError:
             pass
 
@@ -74,6 +74,6 @@ class TestKRelPhLocalPressureDecision(TestCase):
     def test_k_rel_ph_local_pressure_decision_3(self):
         try:
             _ = self.prop.k_rel_ph_local_pressure_decision(s_1=0.5, s_2=0.5, p_1=24, p_2=5, ph='ww')
-            self.assertTrue(True, msg='Passed wrong arg as ph')
+            self.assertTrue(False, msg='Passed wrong arg as ph')
         except ValueError:
             pass

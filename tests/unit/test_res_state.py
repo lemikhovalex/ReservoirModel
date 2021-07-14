@@ -18,6 +18,7 @@ class TestResState(TestCase):
     def test_get_item_2(self):
         try:
             _ = ResState(values=np.array(range(self.prop.nx - 1 * self.prop.ny)), bound_value=-1, prop=self.prop)
+            self.assertTrue(False)
         except IndexError:
             pass
 
@@ -38,6 +39,6 @@ class TestResState(TestCase):
     def test_get_item_7(self):
         try:
             _ = self.state[1, self.prop.ny + 1]
-            self.assertTrue(True, msg='')
+            self.assertTrue(False, msg='')
         except IndexError:
             pass
