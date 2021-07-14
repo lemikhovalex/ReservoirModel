@@ -86,7 +86,7 @@ class Properties:
         for i in range(nx):
             self.mask_close[ny * i] = 0
 
-    def __get_s_wn(self, s_w: Union[float, np.ndarray]):
+    def _get_s_wn(self, s_w: Union[float, np.ndarray]):
         """
         calculates parameter for relative permeability
         https://en.wikipedia.org/wiki/Relative_permeability#LET-model
@@ -107,7 +107,7 @@ class Properties:
             s_wn[s_wn > 1] = 1
         return s_wn
 
-    def __k_rel_w(self, s_w: Union[float, np.ndarray]):
+    def _k_rel_w(self, s_w: Union[float, np.ndarray]):
         """
         relative water permeability by single value or np.ndarray
         Args:
@@ -116,12 +116,12 @@ class Properties:
         Returns:
 
         """
-        s_wn = self.__get_s_wn(s_w)
+        s_wn = self._get_s_wn(s_w)
         out = s_wn ** self.l_w * self.k_rwr
         out /= s_wn ** self.l_w + self.e_w * (1 - s_wn) ** self.t_w
         return out
 
-    def __k_rel_o(self, s_o: Union[float, np.ndarray]):
+    def _k_rel_o(self, s_o: Union[float, np.ndarray]):
         """
         relative oil permeability by single value or np.ndarray
         Args:
@@ -131,7 +131,7 @@ class Properties:
 
         """
         s_w = 1 - s_o
-        s_wn = self.__get_s_wn(s_w)
+        s_wn = self._get_s_wn(s_w)
         out = self.k_rot * (1 - s_wn) ** self.l_o
         out /= (1 - s_wn) ** self.l_o + self.e_o * s_wn ** self.t_o
         return out
@@ -148,9 +148,11 @@ class Properties:
         """
         out = 0
         if ph == 'o':
-            out = self.__k_rel_o(s)
+            out = self._k_rel_o(s)
         elif ph == 'w':
-            out = self.__k_rel_w(s)
+            out = self._k_rel_w(s)
+        else:
+            raise ValueError('for now available only water and oil, so pass "ph"="o" or "2"')
         return out
 
     def k_rel_ph_local_pressure_decision(self, s_1: float, s_2: float, p_1: float, p_2: float, ph: str) -> float:
