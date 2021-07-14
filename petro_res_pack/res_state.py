@@ -9,7 +9,7 @@ class ResState:
         self.shape = values.shape
         self.prop = prop
 
-    def __getitem__(self, item):
+    def __getitem__(self, item) -> float:
         i, j = item
         diag = two_dim_index_to_one(i, j, self.prop.ny)
         if (i < 0) | (j < 0) | (i > self.prop.nx - 1) | (j > self.prop.ny - 1):
