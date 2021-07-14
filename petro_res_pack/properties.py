@@ -1,4 +1,5 @@
 import numpy as np
+from typing import Union
 
 
 class Properties:
@@ -35,7 +36,7 @@ class Properties:
         for i in range(nx):
             self.mask_close[ny * i] = 0
 
-    def get_s_wn(self, s_w):
+    def __get_s_wn(self, s_w):
         s_wn = (s_w - self.s_wir) / (self.s_wor - self.s_wir)
         if s_wn < 0:
             s_wn = 0
@@ -43,68 +44,66 @@ class Properties:
             s_wn = 1
         return s_wn
 
-    def k_rel_w(self, s_w):
-        s_wn = self.get_s_wn(s_w)
+    def __k_rel_w(self, s_w: Union[float, np.ndarray]):
+        """
+        relative water permeability by single value or np.ndarray
+        Args:
+            s_w: water saturation
+
+        Returns:
+
+        """
+        s_wn = self.__get_s_wn(s_w)
         out = s_wn ** self.l_w * self.k_rwr
         out /= s_wn ** self.l_w + self.e_w * (1 - s_wn) ** self.t_w
         return out
 
-    def k_rel_o(self, s_o):
+    def __k_rel_o(self, s_o: Union[float, np.ndarray]):
+        """
+        relative oil permeability by single value or np.ndarray
+        Args:
+            s_o:
+
+        Returns:
+
+        """
         s_w = 1 - s_o
-        s_wn = self.get_s_wn(s_w)
+        s_wn = self.__get_s_wn(s_w)
         out = self.k_rot * (1 - s_wn) ** self.l_o
         out /= (1 - s_wn) ** self.l_o + self.e_o * s_wn ** self.t_o
         return out
 
-    def k_rel_ph_1val(self, s, ph):
+    def k_rel_by_ph(self, s: Union[np.ndarray, float], ph: str):
+        """
+        calculates relative permeability for given vector of saturation for given phase/liquid
+        Args:
+            s: saturation vector
+            ph: phase, oil or water
+
+        Returns: vector of relative permeabilities, same size as input
+
+        """
         out = 0
         if ph == 'o':
-            out = self.k_rel_o(s)
+            out = self.__k_rel_o(s)
         elif ph == 'w':
-            out = self.k_rel_w(s)
+            out = self.__k_rel_w(s)
         return out
 
-    def k_rel_ph(self, s_1, s_2, p_1, p_2, ph):
+    def k_rel_ph_local_pressure_decision(self, s_1: float, s_2: float, p_1: float, p_2: float, ph: str) -> float:
         """
-        1st floor then ceil
-        :param s_1:
-        :param s_2:
-        :param p_1:
-        :param p_2:
-        :param ph:
-        :return:
+        there are 2 neighbouring cells, and relative permeability depends on direction of flow
+        or the pressure value.
+        :param s_1: saturation in 1st cell
+        :param s_2: saturation in 2nd cell
+        :param p_1: pressure in 1st cell
+        :param p_2: pressure in 2nd cell
+        :param ph: phase oil or water
+        :return: float value of relative permeability
         """
         out = 0
         if p_1 >= p_2:
-            out = self.k_rel_ph_1val(s=s_1, ph=ph)
+            out = self.k_rel_by_ph(s=s_1, ph=ph)
         elif p_1 <= p_2:
-            out = self.k_rel_ph_1val(s=s_2, ph=ph)
-        return out
-
-    def get_s_wn_ph_np(self, sat_arr: np.ndarray):
-        out = sat_arr - self.s_wir
-        out /= (self.s_wor - self.s_wir)
-        out = np.where(out >= 0, out, 0)
-        out = np.where(out < 1, out, 1)
-        return out
-
-    def k_rel_w_np(self, sat_arr: np.ndarray):
-        s_wn = self.get_s_wn_ph_np(sat_arr)
-        out = s_wn ** self.l_w * self.k_rwr
-        out /= s_wn ** self.l_w + self.e_w * (1 - s_wn) ** self.t_w
-        return out
-
-    def k_rel_o_np(self, s_o):
-        s_w = 1 - s_o
-        s_wn = self.get_s_wn_ph_np(s_w)
-        out = self.k_rot * (1 - s_wn) ** self.l_o
-        out /= (1 - s_wn) ** self.l_o + self.e_o * s_wn ** self.t_o
-        return out
-
-    def k_rel_ph_1val_np(self, s_arr, ph):
-        out = None
-        if ph == 'o':
-            out = self.k_rel_o_np(s_arr)
-        elif ph == 'w':
-            out = self.k_rel_w_np(s_arr)
+            out = self.k_rel_by_ph(s=s_2, ph=ph)
         return out
