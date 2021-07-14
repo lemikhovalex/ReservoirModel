@@ -38,10 +38,14 @@ class Properties:
 
     def __get_s_wn(self, s_w):
         s_wn = (s_w - self.s_wir) / (self.s_wor - self.s_wir)
-        if s_wn < 0:
-            s_wn = 0
-        if s_wn > 1:
-            s_wn = 1
+        if isinstance(s_wn, float) or isinstance(s_wn, int):
+            if s_wn < 0:
+                s_wn = 0
+            if s_wn > 1:
+                s_wn = 1
+        elif isinstance(s_wn, np.ndarray):
+            s_wn[s_wn < 0] = 0
+            s_wn[s_wn > 1] = 1
         return s_wn
 
     def __k_rel_w(self, s_w: Union[float, np.ndarray]):
