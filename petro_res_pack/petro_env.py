@@ -18,7 +18,7 @@ from .sub_matrices_utils import get_sub_matrix
 from .math_phis_utils import get_laplace_one_ph
 
 
-def get_q_bound(p: ResState, s: ResState, ph: str, prop: Properties, q_b: np.ndarray) -> None:
+def get_q_bound(p: ResState, s: ResState, ph: str, prop: Properties) -> np.ndarray:
     """
     q from bounds into reservoir
     Args:
@@ -26,12 +26,11 @@ def get_q_bound(p: ResState, s: ResState, ph: str, prop: Properties, q_b: np.nda
         s: saturation as ResState
         ph: phase, "o" (oil) or "w" (water)
         prop: properties of reservoir
-        q_b: vector which will be over wrote
 
     Returns: vector dimension just as p.v.shape (nx *ny, 1)
 
     """
-    q_b *= 0
+    q_b = np.zeros((prop.nx * prop.ny, 1))
     for row in range(prop.nx):
         # (row, -0.5)
         k_r = prop.k_rel_ph_local_pressure_decision(s_1=s[row, -0.5], s_2=s[row, 0],
@@ -62,6 +61,7 @@ def get_q_bound(p: ResState, s: ResState, ph: str, prop: Properties, q_b: np.nda
         q_b[dia_, 0] += prop.k * k_r / prop.dx * p[prop.nx - 0.5, col] * prop.d * prop.dy / prop.mu[ph]
         # corners to zero
     # return q_b.reshape((prop.nx * prop.ny, 1))
+    return q_b
 
 
 def get_r_ref(prop: Properties) -> float:
@@ -77,7 +77,8 @@ def get_r_ref(prop: Properties) -> float:
     return 1 / (1 / prop.dx + np.pi / prop.d)
 
 
-def get_j_matrix(s: ResState, p: ResState, pos_r: dict, ph: str, prop: Properties, j_matrix: np.ndarray) -> None:
+def get_j_matrix(s: ResState, p: ResState, pos_r: dict, ph: str, prop: Properties, openness: np.ndarray,
+                 j_matrix: np.ndarray) -> None:
     """
     over write J matrix as from lectures
     Args:
@@ -86,6 +87,7 @@ def get_j_matrix(s: ResState, p: ResState, pos_r: dict, ph: str, prop: Propertie
         pos_r: dictionary position -> radius of wells
         ph: phase "o" (oil) or "w" (water)
         prop: properties of reservoir
+        openness: openness of each well. 1 if in sell there is no well
         j_matrix: matrix from lectures, will be over wrote
 
     Returns: nothing
@@ -103,6 +105,7 @@ def get_j_matrix(s: ResState, p: ResState, pos_r: dict, ph: str, prop: Propertie
                                                     ph=ph)
 
         j_matrix[dia_pos] = _p
+    j_matrix *= openness
     # return out.reshape((prop.nx * prop.ny, 1))
 
 
@@ -157,9 +160,6 @@ class PetroEnv(Env):
         self.j_o = np.zeros((prop.nx * prop.ny, 1))
         self.j_w = np.zeros((prop.nx * prop.ny, 1))
 
-        self.q_bound_w = np.zeros((prop.nx * prop.ny, 1))
-        self.q_bound_o = np.zeros((prop.nx * prop.ny, 1))
-
         self.price = {'w': 5, 'o': 40}
 
         # self.delta_p_vec = np.ones((prop.nx * prop.ny, 1)) * delta_p_well
@@ -172,16 +172,11 @@ class PetroEnv(Env):
         self.nx_ny_ones = np.ones((prop.nx * prop.ny, 1))
         self.nx_ny_eye = np.eye(prop.nx * prop.ny)
         self.t = 0
-        self.laplacian_o = None
-        self.dt_comp_sat = None
-        self.laplacian_w = None
         self.openness = np.zeros(self.prop.nx * self.prop.ny)
         self.s_star = 0
         self.set_s_star()
 
-        self.si_o = None
-        self.si_w = None
-
+        self.estimated_dt = None
         self.viewer = None
         self._last_action = np.ones(len(self.pos_r))
 
@@ -344,6 +339,19 @@ class PetroEnv(Env):
 
         return out.reshape(-1)
 
+    def _load_action(self, action: np.ndarray = None):
+        self.openness = np.ones((self.prop.nx * self.prop.ny, 1))
+        if action is not None:
+            assert len(self.pos_r) == len(action)  # wanna same wells
+            for _i, well in enumerate(self.pos_r):
+                self.openness[two_dim_index_to_one(well[0], well[1], self.prop.ny), 0] = action[_i]
+                # do matrices for flow estimation
+            self._last_action = self.openness
+            get_j_matrix(s=self.s_o, p=self.p, pos_r=self.pos_r, ph='o', prop=self.prop, openness=self.openness,
+                         j_matrix=self.j_o)
+            get_j_matrix(s=self.s_w, p=self.p, pos_r=self.pos_r, ph='w', prop=self.prop, openness=self.openness,
+                         j_matrix=self.j_w)
+
     def step(self, action: np.ndarray = None) -> [np.ndarray, float, bool, dict]:
         """
 
@@ -361,49 +369,40 @@ class PetroEnv(Env):
 
         reward = self.evaluate_action(action)
 
-        self.dt_comp_sat = self.s_o.v * self.prop.c['o'] + self.s_w.v * self.prop.c['w']
-        self.dt_comp_sat += self.nx_ny_ones * self.prop.c['r']
-        self.dt_comp_sat *= self.prop.dx * self.prop.dy * self.prop.d
-        # do matrices for flow estimation
-        get_j_matrix(p=self.p, s=self.s_o, pos_r=self.pos_r, ph='o', prop=self.prop, j_matrix=self.j_o)
-        get_j_matrix(p=self.p, s=self.s_w, pos_r=self.pos_r, ph='w', prop=self.prop, j_matrix=self.j_w)
-        # wells are open not full-wide
-        self.openness = np.ones((self.prop.nx * self.prop.ny, 1))
-        self._last_action = np.ones(len(self.pos_r))
-        if action is not None:
-            assert len(self.pos_r) == len(action)  # wanna same wells
-            self._last_action = action
-            for _i, well in enumerate(self.pos_r):
-                self.openness[two_dim_index_to_one(well[0], well[1], self.prop.ny), 0] = action[_i]
-            self.j_o *= self.openness
-            self.j_w *= self.openness
+        dt_comp_sat = self.s_o.v * self.prop.c['o'] + self.s_w.v * self.prop.c['w']
+        dt_comp_sat += self.nx_ny_ones * self.prop.c['r']
+        dt_comp_sat *= self.prop.dx * self.prop.dy * self.prop.d
         # now
-        self.laplacian_w, self.si_w = get_laplace_one_ph(p=self.p, s=self.s_w, ph='w', prop=self.prop)
-        self.laplacian_o, self.si_o = get_laplace_one_ph(p=self.p, s=self.s_o, ph='o', prop=self.prop)
+        laplacian_w, si_w = get_laplace_one_ph(p=self.p, s=self.s_w, ph='w', prop=self.prop)
+        laplacian_o, si_o = get_laplace_one_ph(p=self.p, s=self.s_o, ph='o', prop=self.prop)
 
-        get_q_bound(self.p, self.s_w, 'w', self.prop, q_b=self.q_bound_w)
-        get_q_bound(self.p, self.s_o, 'o', self.prop, q_b=self.q_bound_o)
+        self.estimated_dt = self._estimate_dt(dt_comp_sat, si_o=si_o, si_w=si_w)
+
+        q_bound_w = get_q_bound(self.p, self.s_w, 'w', self.prop)
+        q_bound_o = get_q_bound(self.p, self.s_o, 'o', self.prop)
         # set dt according Courant
-        # self.prop.dt = 0.1 * self.prop.phi * self.dt_comp_sat.min() / (si_o + si_w)
+        # self.prop.dt = 0.1 * self.prop.phi * dt_comp_sat.min() / (si_o + si_w)
         # matrix for implicit pressure
-        a = self.prop.phi * sparse.diags(diagonals=[self.dt_comp_sat.reshape(-1)],
+
+        # UPDATE PRESSURE
+        a = self.prop.phi * sparse.diags(diagonals=[dt_comp_sat.reshape(-1)],
                                          offsets=[0])
 
-        a = a - (self.laplacian_w + self.laplacian_o) * self.prop.dt
+        a = a - (laplacian_w + laplacian_o) * self.prop.dt
         # right hand state for ax = b
-        b = self.prop.phi * self.dt_comp_sat * self.p.v + self.q_bound_w * self.prop.dt + self.q_bound_o * self.prop.dt
+        b = self.prop.phi * dt_comp_sat * self.p.v + q_bound_w * self.prop.dt + q_bound_o * self.prop.dt
         b += (self.j_o * self.prop.b['o'] + self.j_w * self.prop.b['w']) * self.delta_p_vec * self.prop.dt
         # solve p
         p_new = sp_lin_alg.spsolve(a, b).reshape((-1, 1))
         # upd time stamp
 
         self.t += self.prop.dt / (60. * 60 * 24)
-
+        # UPDATE SATURATION
         a = self.nx_ny_ones + (self.prop.c['r'] + self.prop.c['o']) * (p_new - self.p.v)
         a *= self.prop.dx * self.prop.dy * self.prop.d * self.prop.phi
 
         b = self.prop.phi * self.prop.dx * self.prop.dy * self.prop.d * self.s_o.v
-        b_add = (self.laplacian_o.dot(p_new) + self.q_bound_o + self.j_o * self.prop.b['o'] * self.delta_p_vec)
+        b_add = (laplacian_o.dot(p_new) + q_bound_o + self.j_o * self.prop.b['o'] * self.delta_p_vec)
         b_add *= self.prop.dt
         b += b_add
         # upd target values
@@ -431,7 +430,7 @@ class PetroEnv(Env):
             out = ((-1) * self.j_w * self.delta_p_vec).reshape((self.prop.nx, self.prop.ny))
         else:
             raise NotImplementedError('For now available only oil ("o") and water ("w")')
-        return out * self.openness.reshape((self.prop.nx, self.prop.ny))
+        return out
 
     def reset(self):
         self.p.v = np.ones((self.prop.nx * self.prop.ny, 1)) * self.p.bound_v
@@ -441,9 +440,6 @@ class PetroEnv(Env):
 
         self.j_o = np.zeros((self.prop.nx * self.prop.ny, 1))
         self.j_w = np.zeros((self.prop.nx * self.prop.ny, 1))
-
-        self.q_bound_w = np.zeros((self.prop.nx * self.prop.ny, 1))
-        self.q_bound_o = np.zeros((self.prop.nx * self.prop.ny, 1))
 
         # self.delta_p_vec = np.ones((prop.nx * prop.ny, 1)) * delta_p_well
         # '''
@@ -455,9 +451,6 @@ class PetroEnv(Env):
         self.nx_ny_ones = np.ones((self.prop.nx * self.prop.ny, 1))
         self.nx_ny_eye = np.eye(self.prop.nx * self.prop.ny)
         self.t = 0
-        self.laplacian_o = None
-        self.dt_comp_sat = None
-        self.laplacian_w = None
         self.openness = np.zeros(self.prop.nx * self.prop.ny)
         obs = self.get_observation()
         return obs
@@ -474,22 +467,20 @@ class PetroEnv(Env):
         """
         j_o = np.zeros((self.prop.nx * self.prop.ny, 1))
         j_w = np.zeros((self.prop.nx * self.prop.ny, 1))
-        get_j_matrix(p=self.p, s=self.s_o, pos_r=self.pos_r, ph='o', prop=self.prop, j_matrix=j_o)
-        get_j_matrix(p=self.p, s=self.s_w, pos_r=self.pos_r, ph='w', prop=self.prop, j_matrix=j_w)
+        get_j_matrix(s=self.s_o, p=self.p, pos_r=self.pos_r, ph='o', prop=self.prop, openness=action, j_matrix=j_o)
+        get_j_matrix(s=self.s_w, p=self.p, pos_r=self.pos_r, ph='w', prop=self.prop, openness=action, j_matrix=j_w)
 
         openness = np.ones((self.prop.nx * self.prop.ny, 1))
         if action is not None:
             for _i, well in enumerate(self.pos_r):
                 openness[two_dim_index_to_one(well[0], well[1], self.prop.ny), 0] = action[_i]
-            j_o *= openness
-            j_w *= openness
         if ph == 'o':
             out = ((-1) * j_o * self.delta_p_vec).reshape((self.prop.nx, self.prop.ny))
         elif ph == 'w':
             out = ((-1) * j_w * self.delta_p_vec).reshape((self.prop.nx, self.prop.ny))
         else:
             raise NotImplementedError('Only available for water ("w") and oil ("o")')
-        return out * openness.reshape((self.prop.nx, self.prop.ny))
+        return out
 
     def evaluate_wells(self, action: np.ndarray = None) -> np.ndarray:
         """
@@ -541,7 +532,7 @@ class PetroEnv(Env):
             out += r
         return out
 
-    def _get_action(self, strategy):
+    def _get_action(self, strategy) -> np.ndarray:
         """
         estimates action for particular strategy
         Args:
@@ -569,9 +560,9 @@ class PetroEnv(Env):
             action[_i] = 0. if s_check < self.s_star else 1.
         return action
 
-    def estimate_dt(self) -> float:
+    def _estimate_dt(self, dt_comp_sat: np.ndarray, si_o: float, si_w: float) -> float:
         """
         Function estimates max possible dt for this sates
         Returns: time as seconds
         """
-        return self.prop.phi * self.dt_comp_sat.min() / (self.si_o + self.si_w)
+        return self.prop.phi * dt_comp_sat.min() / (si_o + si_w)
