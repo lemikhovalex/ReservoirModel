@@ -415,7 +415,7 @@ class PetroEnv(Env):
 
         return [obs, reward, self.t > self.max_time, {}]
 
-    def __get_q(self, ph: str) -> np.ndarray:
+    def get_q_(self, ph: str) -> np.ndarray:
         """
         extracts flow rate for fluid from reservoir wells
         Args:

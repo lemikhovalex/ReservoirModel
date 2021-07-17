@@ -92,8 +92,8 @@ class Session:
             state = obs_trans_func(state)
             self.i += 1
             self.i += 1
-            q_o = self.env.__get_q(ph='o')
-            q_w = self.env.__get_q(ph='w')
+            q_o = self.env.get_q_(ph='o')
+            q_w = self.env.get_q_(ph='w')
             # save local data to average them later
             for _i, w in enumerate(self.env.pos_r):
                 self.p_well_hist_loc[w].append(self.env.p[w] / 6894.)
