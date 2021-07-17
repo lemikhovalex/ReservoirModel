@@ -1,6 +1,8 @@
 import numpy as np
 import scipy.sparse as sparse
 import scipy.sparse.linalg as sp_lin_alg
+import pandas as pd
+
 from gym import Env
 from gym.envs.classic_control.rendering import SimpleImageViewer
 
@@ -8,7 +10,6 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 import seaborn as sns
 
-import pandas as pd
 
 from .properties import Properties
 from .res_state import ResState
