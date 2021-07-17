@@ -357,8 +357,6 @@ class PetroEnv(Env):
             additional_info dict: some stuff for debug or insights, not learning
 
         """
-        if action is not None:
-            assert len(self.pos_r) == len(action)  # wanna same wells
 
         reward = self.evaluate_action(action)
 
@@ -372,6 +370,7 @@ class PetroEnv(Env):
         self.openness = np.ones((self.prop.nx * self.prop.ny, 1))
         self._last_action = np.ones(len(self.pos_r))
         if action is not None:
+            assert len(self.pos_r) == len(action)  # wanna same wells
             self._last_action = action
             for _i, well in enumerate(self.pos_r):
                 self.openness[two_dim_index_to_one(well[0], well[1], self.prop.ny), 0] = action[_i]
