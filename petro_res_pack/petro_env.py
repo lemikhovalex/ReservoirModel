@@ -17,7 +17,19 @@ from .sub_matrices_utils import get_sub_matrix
 from .math_phis_utils import get_laplace_one_ph
 
 
-def get_q_bound(p: ResState, s, ph, prop: Properties, q_b):
+def get_q_bound(p: ResState, s: ResState, ph: str, prop: Properties, q_b: np.ndarray) -> None:
+    """
+    q from bounds into reservoir
+    Args:
+        p: pressure as ResState
+        s: saturation as ResState
+        ph: phase, "o" (oil) or "w" (water)
+        prop: properties of reservoir
+        q_b: vector which will be over wrote
+
+    Returns: vector dimension just as p.v.shape (nx *ny, 1)
+
+    """
     q_b *= 0
     for row in range(prop.nx):
         # (row, -0.5)
@@ -51,11 +63,33 @@ def get_q_bound(p: ResState, s, ph, prop: Properties, q_b):
     # return q_b.reshape((prop.nx * prop.ny, 1))
 
 
-def get_r_ref(prop: Properties):
+def get_r_ref(prop: Properties) -> float:
+    """
+    For estimating flow to well it's necessary to define radius on which initial condition (solve derivatives)
+    matches
+    Args:
+        prop: properties of reservoir
+
+    Returns:
+
+    """
     return 1 / (1 / prop.dx + np.pi / prop.d)
 
 
-def get_j_matrix(s, p, pos_r, ph, prop: Properties, j_matrix):
+def get_j_matrix(s: ResState, p: ResState, pos_r: dict, ph: str, prop: Properties, j_matrix: np.ndarray) -> None:
+    """
+    over write J matrix as from lectures
+    Args:
+        s: saturation of reservoir
+        p: pressure in reservoir
+        pos_r: dictionary position -> radius of wells
+        ph: phase "o" (oil) or "w" (water)
+        prop: properties of reservoir
+        j_matrix: matrix from lectures, will be over wrote
+
+    Returns: nothing
+
+    """
     r_ref = get_r_ref(prop)
     for pos in pos_r:
         dia_pos = two_dim_index_to_one(i=pos[0], j=pos[1], ny=prop.ny)
@@ -84,62 +118,23 @@ def preprocess_p(p: ResState) -> np.ndarray:
 
 
 class PetroEnv(Env):
-
-    def _get_image(self, mode='human') -> np.ndarray:
-        if mode == 'human':
-            f, ax = plt.subplots(nrows=2, ncols=2, figsize=(16, 12))
-            f.tight_layout(pad=6.0)
-
-            nx, ny = self.prop.nx, self.prop.ny
-            xs = np.linspace(0, self.prop.dx * (nx - 1), nx)
-            ys = np.linspace(0, self.prop.dy * (ny - 1), ny)
-
-            label_font_size = 16
-            title_font_size = 16
-            x_tick_size = 14
-
-            df = pd.DataFrame(self.p.v.reshape((nx, ny)) / 6894., columns=xs, index=ys)
-            sns.heatmap(df, ax=ax[0][0], cbar=True)
-            ax[0][0].set_title(f'Pressure, psi\nt={self.t: .1f} days', fontsize=title_font_size)
-            ax[0][0].set_xlabel('y, m', fontsize=label_font_size)
-            ax[0][0].set_ylabel('x, m', fontsize=label_font_size)
-            ax[0][0].tick_params(axis='x', labelsize=x_tick_size)
-            ax[0][0].tick_params(axis='y', labelsize=x_tick_size)
-
-            df = pd.DataFrame(self.s_o.v.reshape((nx, ny)), columns=xs, index=ys)
-            sns.heatmap(df, ax=ax[0][1],
-                        cbar=True, fmt=".2f")
-            ax[0][1].set_title(f'Saturation, oil\nt={self.t: .1f} days', fontsize=title_font_size)
-            ax[0][1].set_xlabel('y, m', fontsize=label_font_size)
-            ax[0][1].set_ylabel('x, m', fontsize=label_font_size)
-            ax[0][1].tick_params(axis='x', labelsize=x_tick_size)
-            ax[0][1].tick_params(axis='y', labelsize=x_tick_size)
-
-            ax[1][0].bar([str(w) for w in self.pos_r], self._last_action)
-            ax[1][0].set_ylim((0, 1))
-
-            ax[1][1].bar([str(w) for w in self.pos_r], self.evaluate_wells(self._last_action))
-            ax[1][1].set_ylim((0, 1))
-            plt.close()
-
-            canvas = FigureCanvas(f)
-
-            canvas.draw()  # draw the canvas, cache the renderer
-            w, h = canvas.get_width_height()
-            image = np.frombuffer(canvas.tostring_rgb(), dtype='uint8').reshape(h, w, 3)
-
-            return image
-
-    def render(self, mode='human'):
-        img = self._get_image(mode=mode)
-        if mode == 'human':
-            if self.viewer is None:
-                self.viewer = SimpleImageViewer()
-            self.viewer.imshow(img)
-            return self.viewer.is_open
-
     def __init__(self, p, s_o: ResState, s_w: ResState, prop: Properties, pos_r: dict, delta_p_well: float,
                  max_time: float = 90., observation_kernel_size: int = 0, marge_4_preprocess: bool = False):
+        """
+        gym-like class for petro physics environment
+        Args:
+            p: pressure in environment, as ResSate
+            s_o: saturation of oil, as ResState
+            s_w:saturation of water, as ResState
+            prop: properties of reservoir, as Properties
+            pos_r: dictionary: position on grid of producing wells -> radius in meters
+            delta_p_well: constant bottom hole pressure for well
+            max_time: days, max time of env, for now only on condition of env is not terminated
+            observation_kernel_size: 0, if observa full reservoir, if observe only vicinity of well, int, size of it
+                                     so all returns as state are (kernell * kernell * 2 * n_wells) size
+            marge_4_preprocess: if htere is marge in preprocessing, for saturation.
+                                if profit rate is positive, s > 0.1 , else < -0.1
+        """
         self.max_time = max_time
         self.p_0 = p
         self.s_o_0 = s_o
@@ -189,7 +184,96 @@ class PetroEnv(Env):
         self.viewer = None
         self._last_action = np.ones(len(self.pos_r))
 
-    def set_s_star(self):
+    def _get_figure(self, mode: str):
+        """
+        constructs matplotlib figure
+        Args:
+            mode: mode, as for render, way of seeing the process
+
+        Returns: just as matplotlib.subplots, figure and axes
+
+        """
+        if mode == 'human':
+            f, ax = plt.subplots(nrows=2, ncols=2, figsize=(16, 12))
+            f.tight_layout(pad=6.0)
+
+            nx, ny = self.prop.nx, self.prop.ny
+            xs = np.linspace(0, self.prop.dx * (nx - 1), nx)
+            ys = np.linspace(0, self.prop.dy * (ny - 1), ny)
+
+            label_font_size = 16
+            title_font_size = 16
+            x_tick_size = 14
+
+            df = pd.DataFrame(self.p.v.reshape((nx, ny)) / 6894., columns=xs, index=ys)
+            sns.heatmap(df, ax=ax[0][0], cbar=True)
+            ax[0][0].set_title(f'Pressure, psi\nt={self.t: .1f} days', fontsize=title_font_size)
+            ax[0][0].set_xlabel('y, m', fontsize=label_font_size)
+            ax[0][0].set_ylabel('x, m', fontsize=label_font_size)
+            ax[0][0].tick_params(axis='x', labelsize=x_tick_size)
+            ax[0][0].tick_params(axis='y', labelsize=x_tick_size)
+
+            df = pd.DataFrame(self.s_o.v.reshape((nx, ny)), columns=xs, index=ys)
+            sns.heatmap(df, ax=ax[0][1],
+                        cbar=True, fmt=".2f")
+            ax[0][1].set_title(f'Saturation, oil\nt={self.t: .1f} days', fontsize=title_font_size)
+            ax[0][1].set_xlabel('y, m', fontsize=label_font_size)
+            ax[0][1].set_ylabel('x, m', fontsize=label_font_size)
+            ax[0][1].tick_params(axis='x', labelsize=x_tick_size)
+            ax[0][1].tick_params(axis='y', labelsize=x_tick_size)
+
+            ax[1][0].bar([str(w) for w in self.pos_r], self._last_action)
+            ax[1][0].set_ylim((0, 1))
+
+            ax[1][1].bar([str(w) for w in self.pos_r], self.evaluate_wells(self._last_action))
+            ax[1][1].set_ylim((0, 1))
+            plt.close()
+            return f
+        else:
+            raise NotImplementedError('only "human" mode(')
+
+    def _get_image(self, mode='human') -> np.ndarray:
+        """
+        creates image as pixels, as array for render
+        Args:
+            mode: mode of viewing the env, just as regular gym.env, but now only for "human"
+
+        Returns: array of pixels for simple viewer, as in gym.env
+
+        """
+        if mode == 'human':
+            f = self._get_figure(mode=mode)
+
+            canvas = FigureCanvas(f)
+
+            canvas.draw()  # draw the canvas, cache the renderer
+            w, h = canvas.get_width_height()
+            image = np.frombuffer(canvas.tostring_rgb(), dtype='uint8').reshape(h, w, 3)
+
+            return image
+
+    def render(self, mode='human'):
+        """
+        makes processes in env visible by graphics, rather hard for computing
+        Args:
+            mode: mode of viewing the env, just as regular gym.env, but now only for "human"
+
+        Returns: do something with graphics, returns nothing
+
+        """
+        img = self._get_image(mode=mode)
+        if mode == 'human':
+            if self.viewer is None:
+                self.viewer = SimpleImageViewer()
+            self.viewer.imshow(img)
+            return self.viewer.is_open
+
+    def set_s_star(self) -> None:
+        """
+        evaluates oil saturation corresponds to zero moment reward
+        Returns: nothing, updates saturation
+
+        """
         min_d = 100
         _s_star = 1
         for ss in np.linspace(0, 1, 20000):
@@ -331,12 +415,22 @@ class PetroEnv(Env):
 
         return [obs, reward, self.t > self.max_time, {}]
 
-    def get_q(self, ph):
+    def __get_q(self, ph: str) -> np.ndarray:
+        """
+        extracts flow rate for fluid from reservoir wells
+        Args:
+            ph: liquid, for now only water ("w") and oil ("o")
+
+        Returns: vector of liquid rates
+
+        """
         out = None
         if ph == 'o':
             out = ((-1) * self.j_o * self.delta_p_vec).reshape((self.prop.nx, self.prop.ny))
         elif ph == 'w':
             out = ((-1) * self.j_w * self.delta_p_vec).reshape((self.prop.nx, self.prop.ny))
+        else:
+            raise NotImplementedError('For now available only oil ("o") and water ("w")')
         return out * self.openness.reshape((self.prop.nx, self.prop.ny))
 
     def reset(self):
@@ -369,6 +463,15 @@ class PetroEnv(Env):
         return obs
 
     def get_q_act(self, ph: str, action: np.ndarray) -> np.ndarray:
+        """
+        gets q with action
+        Args:
+            ph:
+            action:
+
+        Returns:
+
+        """
         j_o = np.zeros((self.prop.nx * self.prop.ny, 1))
         j_w = np.zeros((self.prop.nx * self.prop.ny, 1))
         get_j_matrix(p=self.p, s=self.s_o, pos_r=self.pos_r, ph='o', prop=self.prop, j_matrix=j_o)
@@ -380,11 +483,12 @@ class PetroEnv(Env):
                 openness[two_dim_index_to_one(well[0], well[1], self.prop.ny), 0] = action[_i]
             j_o *= openness
             j_w *= openness
-        out = None
         if ph == 'o':
             out = ((-1) * j_o * self.delta_p_vec).reshape((self.prop.nx, self.prop.ny))
         elif ph == 'w':
             out = ((-1) * j_w * self.delta_p_vec).reshape((self.prop.nx, self.prop.ny))
+        else:
+            raise NotImplementedError('Only available for water ("w") and oil ("o")')
         return out * openness.reshape((self.prop.nx, self.prop.ny))
 
     def evaluate_wells(self, action: np.ndarray = None) -> np.ndarray:
@@ -417,18 +521,35 @@ class PetroEnv(Env):
         well_rewards = self.evaluate_wells(action)
         return well_rewards.sum()
 
-    def evaluate_strategy(self, strategy='max_reward_for_each_time_step') -> float:
+    def evaluate_strategy(self, strategy: str = 'max_reward_for_each_time_step') -> float:
+        """
+        evaluates some of build-in strategies
+        Args:
+            strategy: available strategies:
+                "max_reward_for_each_time_step": close, if instant reward below zero
+
+        Returns: cumulative reward
+
+        """
         out = 0
         done = False
         _ = self.reset()
         while not done:
             # decide on action
-            action = self.get_action(strategy)
+            action = self._get_action(strategy)
             _, r, done, _ = self.step(action)
             out += r
         return out
 
-    def get_action(self, strategy):
+    def _get_action(self, strategy):
+        """
+        estimates action for particular strategy
+        Args:
+            strategy:
+
+        Returns:
+
+        """
         out = None
         if strategy == 'max_reward_for_each_time_step':
             out = self.__get_act_max_reward_for_each_time_step()
@@ -436,7 +557,12 @@ class PetroEnv(Env):
             raise NotImplementedError
         return out
 
-    def __get_act_max_reward_for_each_time_step(self):
+    def __get_act_max_reward_for_each_time_step(self) -> np.ndarray:
+        """
+        for max instant reward
+        Returns:
+
+        """
         action = np.ones(len(self.pos_r))
         for _i, well in enumerate(self.pos_r):
             s_check = self.s_o[well]

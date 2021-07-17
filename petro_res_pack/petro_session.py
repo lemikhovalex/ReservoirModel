@@ -92,8 +92,8 @@ class Session:
             state = obs_trans_func(state)
             self.i += 1
             self.i += 1
-            q_o = self.env.get_q(ph='o')
-            q_w = self.env.get_q(ph='w')
+            q_o = self.env.__get_q(ph='o')
+            q_w = self.env.__get_q(ph='w')
             # save local data to average them later
             for _i, w in enumerate(self.env.pos_r):
                 self.p_well_hist_loc[w].append(self.env.p[w] / 6894.)
@@ -129,8 +129,8 @@ class Session:
                 f, ax = plt.subplots(nrows=4, ncols=2, figsize=(16, 12))
                 f.tight_layout(pad=6.0)
 
-                df = pd.DataFrame(self.env.p.v.reshape((nx, ny)), columns=xs, index=ys)
-                sns.heatmap(df / 6894., ax=ax[0][0], cbar=True)
+                df = pd.DataFrame(self.env.p.v.reshape((nx, ny)) / 6894., columns=xs, index=ys)
+                sns.heatmap(df, ax=ax[0][0], cbar=True)
                 ax[0][0].set_title(f'Pressure, psi\nt={self.env.t: .1f} days', fontsize=title_font_size)
                 ax[0][0].set_xlabel('y, m', fontsize=label_font_size)
                 ax[0][0].set_ylabel('x, m', fontsize=label_font_size)
