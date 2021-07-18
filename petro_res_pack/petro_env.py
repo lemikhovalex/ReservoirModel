@@ -3,11 +3,13 @@ import scipy.sparse as sparse
 import scipy.sparse.linalg as sp_lin_alg
 import pandas as pd
 
+import warnings
 from gym import Env
 try:
     from gym.envs.classic_control.rendering import SimpleImageViewer
 except ImportError:
-    raise ImportWarning('something with linux I suppose, has no OpenGL')
+    warnings.warn("Warnings for 'from gym.envs.classic_control.rendering import SimpleImageViewer'something with "
+                  "linux I suppose, has no OpenGL")
 
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
