@@ -93,6 +93,7 @@ def get_j_matrix(s: ResState, p: ResState, pos_r: dict, ph: str, prop: Propertie
     Returns: nothing
 
     """
+
     r_ref = get_r_ref(prop)
     for pos in pos_r:
         dia_pos = two_dim_index_to_one(i=pos[0], j=pos[1], ny=prop.ny)
@@ -169,7 +170,7 @@ class PetroEnv(Env):
         self.nx_ny_ones = np.ones((prop.nx * prop.ny, 1))
         self.nx_ny_eye = np.eye(prop.nx * prop.ny)
         self.t = 0
-        self.openness = np.zeros(self.prop.nx * self.prop.ny)
+        self.openness = np.zeros((self.prop.nx * self.prop.ny, 1))
         self.s_star = 0
         self.set_s_star()
 
@@ -336,6 +337,22 @@ class PetroEnv(Env):
 
         return out.reshape(-1)
 
+    def __act_to_openness(self, action: np.ndarray) -> np.ndarray:
+        """
+        converts action (size = number of wells) to openness (size = number of cells)
+        Args:
+            action: well openess
+
+        Returns:
+
+        """
+        out = np.ones((self.prop.nx * self.prop.ny, 1))
+        if action is not None:
+            assert len(self.pos_r) == len(action)  # wanna same wells
+            for _i, well in enumerate(self.pos_r):
+                out[two_dim_index_to_one(well[0], well[1], self.prop.ny), 0] = action[_i]
+        return out
+
     def _load_action(self, action: np.ndarray = None) -> None:
         """
         gets action, save it as J-matrix for further update
@@ -345,17 +362,12 @@ class PetroEnv(Env):
         Returns: nothing, changes attributes
 
         """
-        self.openness = np.ones((self.prop.nx * self.prop.ny, 1))
-        if action is not None:
-            assert len(self.pos_r) == len(action)  # wanna same wells
-            for _i, well in enumerate(self.pos_r):
-                self.openness[two_dim_index_to_one(well[0], well[1], self.prop.ny), 0] = action[_i]
-                # do matrices for flow estimation
-            self._last_action = self.openness
-            get_j_matrix(s=self.s_o, p=self.p, pos_r=self.pos_r, ph='o', prop=self.prop, openness=self.openness,
-                         j_matrix=self.j_o)
-            get_j_matrix(s=self.s_w, p=self.p, pos_r=self.pos_r, ph='w', prop=self.prop, openness=self.openness,
-                         j_matrix=self.j_w)
+        self.openness = self.__act_to_openness(action)
+        self._last_action = self.openness
+        get_j_matrix(s=self.s_o, p=self.p, pos_r=self.pos_r, ph='o', prop=self.prop, openness=self.openness,
+                     j_matrix=self.j_o)
+        get_j_matrix(s=self.s_w, p=self.p, pos_r=self.pos_r, ph='w', prop=self.prop, openness=self.openness,
+                     j_matrix=self.j_w)
 
     def __get_new_pressure(self, laplacian_w, laplacian_o, dt_comp_sat, q_bound_w, q_bound_o) -> np.ndarray:
         """
@@ -504,7 +516,7 @@ class PetroEnv(Env):
         self.nx_ny_ones = np.ones((self.prop.nx * self.prop.ny, 1))
         self.nx_ny_eye = np.eye(self.prop.nx * self.prop.ny)
         self.t = 0
-        self.openness = np.zeros(self.prop.nx * self.prop.ny)
+        self.openness = np.zeros((self.prop.nx * self.prop.ny, 1))
         obs = self.get_observation()
         return obs
 
@@ -518,15 +530,12 @@ class PetroEnv(Env):
         Returns:
 
         """
+        openness = self.__act_to_openness(action)
         j_o = np.zeros((self.prop.nx * self.prop.ny, 1))
         j_w = np.zeros((self.prop.nx * self.prop.ny, 1))
-        get_j_matrix(s=self.s_o, p=self.p, pos_r=self.pos_r, ph='o', prop=self.prop, openness=action, j_matrix=j_o)
-        get_j_matrix(s=self.s_w, p=self.p, pos_r=self.pos_r, ph='w', prop=self.prop, openness=action, j_matrix=j_w)
+        get_j_matrix(s=self.s_o, p=self.p, pos_r=self.pos_r, ph='o', prop=self.prop, openness=openness, j_matrix=j_o)
+        get_j_matrix(s=self.s_w, p=self.p, pos_r=self.pos_r, ph='w', prop=self.prop, openness=openness, j_matrix=j_w)
 
-        openness = np.ones((self.prop.nx * self.prop.ny, 1))
-        if action is not None:
-            for _i, well in enumerate(self.pos_r):
-                openness[two_dim_index_to_one(well[0], well[1], self.prop.ny), 0] = action[_i]
         if ph == 'o':
             out = ((-1) * j_o * self.delta_p_vec).reshape((self.prop.nx, self.prop.ny))
         elif ph == 'w':
@@ -542,9 +551,6 @@ class PetroEnv(Env):
             action: numpy array with openness of each well
         Returns: reward for each well as vector
         """
-        if action is None:
-            action = np.ones(len(self.pos_r))
-
         q_o = self.get_q_act('o', action)
         q_w = self.get_q_act('w', action)
 
@@ -562,6 +568,7 @@ class PetroEnv(Env):
 
         Returns: reward as float
         """
+
         well_rewards = self.evaluate_wells(action)
         return well_rewards.sum()
 
