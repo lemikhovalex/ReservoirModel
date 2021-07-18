@@ -4,11 +4,12 @@ import pkg_resources
 setup(
     name='petro_res_pack',
     url='https://github.com/lemikhovalex/ReservoirModel',
-    version='0.7.1',
+    version='0.7.2',
     author='Aleksandr Lemikhov',
     author_email='lemikhovalex@gmail.com',
     description='Package with gym-like env for petroleum reservoir simulation',
     packages=['petro_res_pack'],
     license='MIT',
-    install_reqs=pkg_resources.parse_requirements('requirements.txt')
+    long_description='Package for simple modeling of reservoir in order to experiment with RL',
+    install_reqs=['numpy', 'matplotlib', 'seaborn', 'ipython', 'pandas', 'scipy', 'gym', 'setuptools', 'pyglet']
 )

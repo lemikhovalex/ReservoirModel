@@ -4,7 +4,10 @@ import scipy.sparse.linalg as sp_lin_alg
 import pandas as pd
 
 from gym import Env
-from gym.envs.classic_control.rendering import SimpleImageViewer
+try:
+    from gym.envs.classic_control.rendering import SimpleImageViewer
+except ImportError:
+    raise ImportWarning('something with linux I suppose, has no OpenGL')
 
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
