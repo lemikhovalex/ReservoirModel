@@ -496,8 +496,6 @@ class PetroEnv(Env):
         self.j_o = np.zeros((self.prop.nx * self.prop.ny, 1))
         self.j_w = np.zeros((self.prop.nx * self.prop.ny, 1))
 
-        # self.delta_p_vec = np.ones((prop.nx * prop.ny, 1)) * delta_p_well
-        # '''
         self.delta_p_vec = np.zeros((self.prop.nx * self.prop.ny, 1))
         for pos in self.pos_r:
             self.delta_p_vec[two_dim_index_to_one(pos[0], pos[1], ny=self.prop.ny), 0] = self.delta_p_well
@@ -581,7 +579,6 @@ class PetroEnv(Env):
         done = False
         _ = self.reset()
         while not done:
-            # decide on action
             action = self._get_action(strategy)
             _, r, done, _ = self.step(action)
             out += r
