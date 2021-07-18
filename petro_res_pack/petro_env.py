@@ -162,12 +162,9 @@ class PetroEnv(Env):
 
         self.price = {'w': 5, 'o': 40}
 
-        # self.delta_p_vec = np.ones((prop.nx * prop.ny, 1)) * delta_p_well
-        # '''
         self.delta_p_vec = np.zeros((prop.nx * prop.ny, 1))
         for pos in pos_r:
             self.delta_p_vec[two_dim_index_to_one(pos[0], pos[1], ny=prop.ny), 0] = delta_p_well
-        # '''
 
         self.nx_ny_ones = np.ones((prop.nx * prop.ny, 1))
         self.nx_ny_eye = np.eye(prop.nx * prop.ny)
@@ -339,7 +336,15 @@ class PetroEnv(Env):
 
         return out.reshape(-1)
 
-    def _load_action(self, action: np.ndarray = None):
+    def _load_action(self, action: np.ndarray = None) -> None:
+        """
+        gets action, save it as J-matrix for further update
+        Args:
+            action: well openness
+
+        Returns: nothing, changes attributes
+
+        """
         self.openness = np.ones((self.prop.nx * self.prop.ny, 1))
         if action is not None:
             assert len(self.pos_r) == len(action)  # wanna same wells
@@ -352,9 +357,98 @@ class PetroEnv(Env):
             get_j_matrix(s=self.s_w, p=self.p, pos_r=self.pos_r, ph='w', prop=self.prop, openness=self.openness,
                          j_matrix=self.j_w)
 
-    def step(self, action: np.ndarray = None) -> [np.ndarray, float, bool, dict]:
+    def __get_new_pressure(self, laplacian_w, laplacian_o, dt_comp_sat, q_bound_w, q_bound_o) -> np.ndarray:
+        """
+        update of pressure through time-step
+        Args:
+            laplacian_w: laplacian-like matrix for derivatives for water saturation
+            laplacian_o: laplacian-like matrix for derivatives for oil saturation
+            dt_comp_sat: some constant vector from equations
+            q_bound_w: water flow from bounds
+            q_bound_o: oil flow from bounds
+
+        Returns:
+
+        """
+        a = self.prop.phi * sparse.diags(diagonals=[dt_comp_sat.reshape(-1)],
+                                         offsets=[0])
+
+        a = a - (laplacian_w + laplacian_o) * self.prop.dt
+        # right hand state for ax = b
+        b = self.prop.phi * dt_comp_sat * self.p.v + q_bound_w * self.prop.dt + q_bound_o * self.prop.dt
+        b += (self.j_o * self.prop.b['o'] + self.j_w * self.prop.b['w']) * self.delta_p_vec * self.prop.dt
+        # solve p
+        out = sp_lin_alg.spsolve(a, b).reshape((-1, 1))
+        return out
+
+    def __update_saturation_with_o(self, p_new, laplacian_o, q_bound_o) -> None:
+        """
+        updates saturation through oil
+        Args:
+            p_new: new pressure
+            laplacian_o: laplacian-like matrix for derivatives for oil saturation
+            q_bound_o: oil flow from bounds
+
+        Returns: nothing, inner attributes are changed
+
+        """
+        a = self.nx_ny_ones + (self.prop.c['r'] + self.prop.c['o']) * (p_new - self.p.v)
+        a *= self.prop.dx * self.prop.dy * self.prop.d * self.prop.phi
+
+        b = self.prop.phi * self.prop.dx * self.prop.dy * self.prop.d * self.s_o.v
+        b_add = (laplacian_o.dot(p_new) + q_bound_o + self.j_o * self.prop.b['o'] * self.delta_p_vec)
+        b_add *= self.prop.dt
+        b += b_add
+        # upd target values
+        self.s_o = ResState((b / a), self.s_o.bound_v, self.prop)
+        self.s_w = ResState(self.nx_ny_ones - self.s_o.v, self.s_w.bound_v, self.prop)
+
+    def __is_done(self) -> bool:
+        """
+        checks if the current state is a terminate one
+        Returns: bolean. if env reached terminate state, true
+
+        """
+        return self.t > self.max_time
+
+    def __update_state(self, action: np.ndarray) -> None:
+        """
+        make all magic inside one function
+        Args:
+            action: well openness
+
+        Returns: nothing
+
         """
 
+        self._load_action(action)
+
+        dt_comp_sat = self.s_o.v * self.prop.c['o'] + self.s_w.v * self.prop.c['w']
+        dt_comp_sat += self.nx_ny_ones * self.prop.c['r']
+        dt_comp_sat *= self.prop.dx * self.prop.dy * self.prop.d
+        # now
+        laplacian_w, si_w = get_laplace_one_ph(p=self.p, s=self.s_w, ph='w', prop=self.prop)
+        laplacian_o, si_o = get_laplace_one_ph(p=self.p, s=self.s_o, ph='o', prop=self.prop)
+
+        self.estimated_dt = self._estimate_dt(dt_comp_sat, si_o=si_o, si_w=si_w)
+
+        q_bound_w = get_q_bound(self.p, self.s_w, 'w', self.prop)
+        q_bound_o = get_q_bound(self.p, self.s_o, 'o', self.prop)
+
+        self.t += self.prop.dt / (60. * 60 * 24)
+
+        # GET NEW PRESSURE
+        p_new = self.__get_new_pressure(laplacian_w=laplacian_w, laplacian_o=laplacian_o, dt_comp_sat=dt_comp_sat,
+                                        q_bound_o=q_bound_o, q_bound_w=q_bound_w)
+        # UPDATE SATURATION
+        self.__update_saturation_with_o(p_new=p_new, laplacian_o=laplacian_o, q_bound_o=q_bound_o)
+        # UPDATE PRESSURE
+        self.p = ResState(p_new, self.prop.p_0, self.prop)
+
+    def step(self, action: np.ndarray = None) -> [np.ndarray, float, bool, dict]:
+        """
+        Most important function for RL. It takes action, makes engine stuff (time step) and returns new state, reward
+        and boolean if new state is a terminate one
         Args:
             action: iterable, each value in (0, 1), length equal to number of well
 
@@ -368,51 +462,12 @@ class PetroEnv(Env):
         """
 
         reward = self.evaluate_action(action)
-
-        dt_comp_sat = self.s_o.v * self.prop.c['o'] + self.s_w.v * self.prop.c['w']
-        dt_comp_sat += self.nx_ny_ones * self.prop.c['r']
-        dt_comp_sat *= self.prop.dx * self.prop.dy * self.prop.d
-        # now
-        laplacian_w, si_w = get_laplace_one_ph(p=self.p, s=self.s_w, ph='w', prop=self.prop)
-        laplacian_o, si_o = get_laplace_one_ph(p=self.p, s=self.s_o, ph='o', prop=self.prop)
-
-        self.estimated_dt = self._estimate_dt(dt_comp_sat, si_o=si_o, si_w=si_w)
-
-        q_bound_w = get_q_bound(self.p, self.s_w, 'w', self.prop)
-        q_bound_o = get_q_bound(self.p, self.s_o, 'o', self.prop)
-        # set dt according Courant
-        # self.prop.dt = 0.1 * self.prop.phi * dt_comp_sat.min() / (si_o + si_w)
-        # matrix for implicit pressure
-
-        # UPDATE PRESSURE
-        a = self.prop.phi * sparse.diags(diagonals=[dt_comp_sat.reshape(-1)],
-                                         offsets=[0])
-
-        a = a - (laplacian_w + laplacian_o) * self.prop.dt
-        # right hand state for ax = b
-        b = self.prop.phi * dt_comp_sat * self.p.v + q_bound_w * self.prop.dt + q_bound_o * self.prop.dt
-        b += (self.j_o * self.prop.b['o'] + self.j_w * self.prop.b['w']) * self.delta_p_vec * self.prop.dt
-        # solve p
-        p_new = sp_lin_alg.spsolve(a, b).reshape((-1, 1))
-        # upd time stamp
-
-        self.t += self.prop.dt / (60. * 60 * 24)
-        # UPDATE SATURATION
-        a = self.nx_ny_ones + (self.prop.c['r'] + self.prop.c['o']) * (p_new - self.p.v)
-        a *= self.prop.dx * self.prop.dy * self.prop.d * self.prop.phi
-
-        b = self.prop.phi * self.prop.dx * self.prop.dy * self.prop.d * self.s_o.v
-        b_add = (laplacian_o.dot(p_new) + q_bound_o + self.j_o * self.prop.b['o'] * self.delta_p_vec)
-        b_add *= self.prop.dt
-        b += b_add
-        # upd target values
-        self.s_o = ResState((b / a), self.s_o.bound_v, self.prop)
-        self.s_w = ResState(self.nx_ny_ones - self.s_o.v, self.s_w.bound_v, self.prop)
-        self.p = ResState(p_new, self.prop.p_0, self.prop)
+        # UPDATE properties for calculations
+        self.__update_state(action)
 
         obs = self.get_observation()
-
-        return [obs, reward, self.t > self.max_time, {}]
+        done = self.__is_done()
+        return [obs, reward, done, {}]
 
     def get_q_(self, ph: str) -> np.ndarray:
         """
